@@ -1,0 +1,219 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: usecase-framework-demo
+
+# 演示：自调用本应用内的 stub 下游；生产替换为真实信用服务地址
+credit:
+  base-url: http://localhost:8080
+
+# =====================================================================
+# 用例编排配置：框架启动时据此自动装配 usecase 管道并绑定 RouterFunction
+# =====================================================================
+usecase:
+  # 异常 → HTTP 状态码映射（key 支持全限定类名或简单类名）
+  error-mappings:
+    com.example.myapp.domain.exception.UserNotFoundException: 404
+
+  definitions:
+    # ---------------------------------------------------------------
+    # shared 用例：不绑定 endpoint，仅作为子用例被其他用例内嵌调用
+    # input（缺省 #payload）→ 子用例初始 payload；as → 结果落点
+    # ---------------------------------------------------------------
+    - id: userBaseEnrichment
+      description: 共享用例：加载用户并转换为 DTO
+      shared: true
+      steps:
+        - name: loadUser
+          type: dataLoader
+          config:
+            expression: "@userRepository.getById(T(com.example.myapp.domain.model.UserId).of(#payload))"
+        - name: toDto
+          type: dataTransformer
+          config:
+            expression: "T(com.example.myapp.application.dto.UserDto).from(#payload)"
+
+    # ---------------------------------------------------------------
+    # 用例一：查询用户（starter → validator → 子用例调用）
+    # starter 在用例开始把 businessId 存入关键数据区，后续步骤经 #biz 引用
+    # ---------------------------------------------------------------
+    - id: getUser
+      description: 根据 ID 查询用户
+      endpoint:
+        method: GET
+        path: /api/v1/users/{id}
+      steps:
+        - name: start
+          type: starter
+          config:
+            keys:
+              businessId: "#path.id"
+        - name: validateInput
+          type: validator
+          config:
+            expression: "#biz.businessId != null and !#biz.businessId.isBlank()"
+            message: "businessId 不能为空"
+            errorCode: "INVALID_INPUT"
+        - name: loadUserBase
+          type: usecase            # 子用例调用：ref 指向目标用例 id
+          ref: userBaseEnrichment
+          config:
+            input: "#biz.businessId"   # 子用例初始 payload；缺省 #payload；未配 as → 子结果串联为父 payload
+
+    # ---------------------------------------------------------------
+    # 用例二：用户画像聚合
+    # starter → 子用例(串联) → httpRequester(认证+旁路) → validator(函数式)
+    #   → logging → encoder → 自定义 ref step → dataSaver
+    # ---------------------------------------------------------------
+    - id: getUserProfile
+      description: 查询用户 → 调下游信用服务 → 信用准入校验 → 记录日志 → 编码标识 → 合并画像 → 保存快照
+      endpoint:
+        method: GET
+        path: /api/v1/users/{id}/profile
+      steps:
+        - name: start
+          type: starter
+          config:
+            keys:
+              businessId: "#path.id"
+              channel: "#{headers['X-Channel']}"     # 模板形式；头缺失时为 null
+        - name: loadUserBase
+          type: usecase
+          ref: userBaseEnrichment    # 串联模式：子结果成为父 payload（vars/biz 与父共享）
+          config:
+            input: "#biz.businessId"
+        - name: fetchCredit
+          type: httpRequester
+          config:
+            method: GET
+            url: "${credit.base-url}/stub/credit/scores/{userId}"
+            uriVariables:
+              userId: "#biz.businessId"
+            headers:
+              X-Request-From: "usecase-framework"
+            auth:
+              scheme: bearer
+              options:
+                token: "demo-credit-token"
+            as: credit                 # 旁路输出：写入 #vars.credit，不占用 payload
+        - name: checkCreditPass
+          type: validator              # 函数式校验：表达式返回 false 即抛 StepValidationException（默认 400）
+          config:
+            expression: "#vars.credit.score >= 600"
+            message: "用户 #{biz.businessId} 信用分不足（>=600 方可生成画像）"
+            errorCode: "CREDIT_TOO_LOW"
+        - name: logCredit
+          type: logging
+          config:
+            level: INFO
+            message: "用户 #{biz.businessId} 信用分: #{vars.credit.score} (#{vars.credit.level})"
+        - name: encodeUserId
+          type: encoder
+          config:
+            algorithm: base64url
+            source: "#biz.businessId"
+            as: encodedUserId          # 旁路输出，供 mergeProfile 引用
+        - name: mergeProfile
+          ref: userProfileTransformer  # 引用自定义 Step Bean（type=usecase 之外，ref 与 type 二选一）
+        - name: saveSnapshot
+          type: dataSaver
+          config:
+            expression: "@profileSnapshotRepository.save(#payload)"
+
+    # ---------------------------------------------------------------
+    # 用例三：按 token 查询用户（starter → decoder → 子用例调用）
+    # 演示 decoder：base64url token 还原 userId（如 u1 ↔ dTE=）
+    # ---------------------------------------------------------------
+    - id: getUserByToken
+      description: base64url token 解码为 userId 后查询用户
+      endpoint:
+        method: GET
+        path: /api/v1/users/token/{token}
+      steps:
+        - name: start
+          type: starter
+          config:
+            keys:
+              token: "#path.token"
+        - name: decodeToken
+          type: decoder
+          config:
+            algorithm: base64url
+            source: "#path.token"      # 未配 as：解码结果写回 payload
+        - name: loadUserBase
+          type: usecase
+          ref: userBaseEnrichment    # 未配 input → 缺省 #payload（即解码出的 userId）
+
+    # ---------------------------------------------------------------
+    # 用例四：Java 代码内调用 shared 子用例
+    # greetingStep（自定义 Bean）注入 UserBaseClient，以普通方法调用触发子用例
+    # ---------------------------------------------------------------
+    - id: greetUser
+      description: 演示 UseCaseInvoker：Java 代码内调用 shared 子用例
+      endpoint:
+        method: GET
+        path: /api/v1/users/{id}/greeting
+      steps:
+        - name: start
+          type: starter
+          config:
+            keys:
+              businessId: "#path.id"
+        - name: greet
+          ref: greetingStep          # Bean 内部经 UseCaseInvoker 调用 userBaseEnrichment
+
+    # ---------------------------------------------------------------
+    # 用例五：创建用户快照（POST；validator schema 模式校验请求体）
+    # 演示 schema 校验 + 子用例 isolate 旁路（校验用户存在性，不污染父 payload）
+    # ---------------------------------------------------------------
+    - id: createUserSnapshot
+      description: 校验请求体 → 隔离模式确认用户存在 → 保存快照
+      endpoint:
+        method: POST
+        path: /api/v1/user-snapshots
+      steps:
+        - name: start
+          type: starter
+          config:
+            keys:
+              businessId: "#body.userId"
+        - name: validateBody
+          type: validator              # schema 模式：装配期预编译，失败返回全部字段错误明细
+          config:
+            target: "#body"            # 校验请求体（缺省 #payload）
+            schema:
+              type: object
+              required: [userId, name]
+              properties:
+                userId:
+                  type: string
+                  minLength: 1
+                name:
+                  type: string
+                  minLength: 1
+                tags:
+                  type: array
+                  items:
+                    type: string
+              additionalProperties: false
+        - name: checkUserExists
+          type: usecase
+          ref: userBaseEnrichment
+          config:
+            input: "#body.userId"
+            as: userDto                # 旁路：结果写 #vars.userDto
+            isolate: true              # 隔离：子用例 vars 全新、biz 拷贝继承，绝不污染父上下文
+        - name: logCreation
+          type: logging
+          config:
+            message: "为用户 #{vars.userDto.name}(#{vars.userDto.id}) 创建快照"
+        - name: toSnapshot
+          type: dataTransformer      # 由请求体 + 子用例旁路结果组装快照（SpEL inline map）
+          config:
+            expression: "{userId: #body.userId, name: #body.name, tags: #body.tags, ownerName: #vars.userDto.name}"
+        - name: saveSnapshot
+          type: dataSaver
+          config:
+            expression: "@profileSnapshotRepository.save(#payload)"

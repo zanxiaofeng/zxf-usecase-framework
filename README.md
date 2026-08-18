@@ -1,0 +1,279 @@
+# usecase-framework —— 配置驱动的用例编排框架
+
+在六边形架构之上，把「应用服务编排」下沉为框架能力：**usecase 由 YAML 声明，step 自动装配成管道，RouterFunction 完成 endpoint 绑定**。新增一个 API 往往只需要一段配置，无需再写 Controller / Service 样板代码。
+
+## 快速开始
+
+```bash
+# 技术基线：Java 21 · Spring Boot 4.1.x · Maven 3.9+
+mvn spring-boot:run
+```
+
+启动日志会打印装配出的路由表：
+
+```
+shared usecase [userBaseEnrichment] steps=[loadUser, toDto]
+route: GET /api/v1/users/{id} -> usecase [getUser] steps=[start, validateInput, loadUserBase]
+route: GET /api/v1/users/{id}/profile -> usecase [getUserProfile] steps=[start, loadUserBase, fetchCredit, checkCreditPass, logCredit, encodeUserId, userProfileTransformer, saveSnapshot]
+route: GET /api/v1/users/token/{token} -> usecase [getUserByToken] steps=[start, decodeToken, loadUserBase]
+route: GET /api/v1/users/{id}/greeting -> usecase [greetUser] steps=[start, GreetingStep]
+route: POST /api/v1/user-snapshots -> usecase [createUserSnapshot] steps=[start, validateBody, checkUserExists, logCreation, toSnapshot, saveSnapshot]
+```
+
+```bash
+curl http://localhost:8080/api/v1/users/u1
+# {"code":"000000","data":{"id":"u1","name":"Alice"},...}
+
+curl http://localhost:8080/api/v1/users/u1/profile
+# {"code":"000000","data":{"id":"u1","name":"Alice","creditScore":760,"creditLevel":"A","snapshotId":"snap-1001",...}}
+```
+
+> demo 的信用下游由 `CreditScoreStubController`（仅演示用）在本应用内模拟；生产环境删除该类并把 `credit.base-url` 指向真实下游。
+
+## 定义一个用例
+
+`src/main/resources/application.yml`：
+
+```yaml
+usecase:
+  definitions:
+    - id: getUserProfile
+      endpoint: { method: GET, path: /api/v1/users/{id}/profile }
+      steps:
+        - name: loadUser
+          type: dataLoader
+          config:
+            expression: "@userRepository.getById(T(com.example.myapp.domain.model.UserId).of(#path.id))"
+        - name: fetchCredit
+          type: httpRequester
+          config:
+            url: "${credit.base-url}/scores/{userId}"
+            uriVariables: { userId: "#path.id" }
+            auth: { scheme: bearer, options: { token: "${credit.token}" } }
+            as: credit                      # 旁路输出到 #vars.credit，不动 payload
+        - name: mergeProfile
+          ref: userProfileTransformer       # 引用自定义 Step Bean（与 type 二选一）
+        - name: saveSnapshot
+          type: dataSaver
+          config:
+            expression: "@profileSnapshotRepository.save(#payload)"
+```
+
+## step 类型
+
+| type | 角色接口 | 职责 | 内置配置 |
+|------|---------|------|---------|
+| `starter` | Starter | 用例开始提取 businessId 等关键标识 → biz 关键数据区（+MDC） | `keys`（键→表达式 map） |
+| `dataLoader` | DataLoader | 出端口读数据 → payload | `expression`, `as` |
+| `dataTransformer` | DataTransformer | payload → payload | `expression`, `as` |
+| `httpRequester` | HttpRequester | 调用外部 HTTP | `method/url/uriVariables/headers/body/auth/as` |
+| `logging` | Logging | 管道任意位置输出日志（不改数据） | `level`, `message`（#{} 模板） |
+| `encoder` | Encoder | 编码/摘要（base64/base64url/url/hex/md5/sha256） | `algorithm`, `source`, `as` |
+| `decoder` | Decoder | 解码（要求算法可逆，装配期校验） | `algorithm`, `source`, `as` |
+| `dataSaver` | DataSaver | payload → 出端口 | `expression`（返回 null 保留 payload）, `as` |
+| `validator` | Validator | 入口校验（schema / 函数式，二选一） | `expression` 或 `schema`, `target`, `message`, `errorCode` |
+| `usecase` | SubUseCase | 嵌入 shared 用例作为子用例 | `ref`=目标用例 id, `input`, `as`, `isolate` |
+| 自定义 | 实现 Step 的 Bean | 任意逻辑 | `ref: beanName` |
+
+## starter 与关键数据区（biz）
+
+```yaml
+- name: start
+  type: starter
+  config:
+    keys:
+      businessId: "#path.id"                    # 约定键：关键业务 ID
+      tenantId: "#headers['X-Tenant-Id']"       # 完整 SpEL
+      channel: "#{headers['X-Channel']}"        # 模板形式
+      source: "app"                             # 字面量
+```
+
+- 写入 `StepContext` 的 **biz 关键数据区**，后续步骤经 `#biz.businessId` 引用；
+- 非 null 值同步到日志 MDC（键 `biz.<key>`），请求结束由 Web 层自动清理，防止线程复用串号；
+- Web 入口在管道执行前自动写入 `traceId`（取 `X-Request-Id` 头，缺省生成 UUID），并回填到响应信封 `traceId` 字段。
+
+## encoder / decoder
+
+```yaml
+- name: encodeUserId
+  type: encoder
+  config:
+    algorithm: base64url     # base64/base64url/url/hex/md5/sha256；自定义 Codec Bean 可扩展
+    source: "#biz.businessId" # 缺省 #payload
+    as: encodedUserId         # 缺省写回 payload
+```
+
+`md5`/`sha256` 为单向摘要，仅可用于 encoder；decoder 引用会在启动期装配失败（fail-fast）。
+
+## shared 用例与子用例调用
+
+用例分两级：**endpoint 用例**（绑定路由，对外服务）与 **shared 用例**（`shared: true`，无 endpoint，仅作为子用例被嵌入）：
+
+```yaml
+- id: userBaseEnrichment
+  shared: true                        # 不绑定 endpoint，不参与路由
+  steps: [ ... ]
+
+- id: getUser
+  endpoint: { method: GET, path: /api/v1/users/{id} }
+  steps:
+    - name: loadUserBase
+      type: usecase
+      ref: userBaseEnrichment          # 目标用例 id（装配期校验存在性 + DFS 环检测）
+      config:
+        input: "#biz.businessId"       # 子用例初始 payload，缺省 #payload
+        as: userDto                    # 可选：结果旁路到 #vars.userDto，父 payload 不动
+        isolate: false                 # 可选：true 时子的 vars 隔离、biz 拷贝继承
+```
+
+数据传递约定：
+
+| 配置 | 子用例输入 | 子结果落点 | vars / biz 可见性 |
+|------|-----------|-----------|------------------|
+| 默认（串联） | `input` 缺省 = 父 payload | 成为父 payload | 与父共享同一实例，子的写入对后续步骤可见 |
+| `as: x`（旁路） | `input` 表达式 | 写入 `#vars.x`，父 payload 恢复 | 同上 |
+| `isolate: true` | `input` 表达式 | 按 `as` 规则落点 | **vars 全新**（不污染父）；**biz 拷贝继承**（子可读父的 businessId，但子的修改不回传） |
+
+异常穿透子用例边界：子用例抛出的领域异常原样沿包装链上抛，由父用例所在端点统一映射（如 `UserNotFoundException` → 404）。装配期 fail-fast：`ref` 指向不存在的用例、直接/间接循环引用（A→B→A）、`shared: false` 却缺 endpoint，都会在启动期报错。
+
+## Java 代码调用子用例（UseCaseInvoker）
+
+shared 用例不仅能在 YAML 里被 `type: usecase` 嵌入，也能被任意 Java 代码直接调用。框架提供两层 API：
+
+**门面 `UseCaseInvoker`**（自动注册为 Bean，注入即用）：
+
+| 方法 | 语义 |
+|------|------|
+| `invoke(id, input)` | 管道内共享当前上下文（vars/biz 互通、traceId 继承），**父 payload 自动恢复**；管道外退化为独立调用 |
+| `invokeIsolated(id, input)` | 隔离：子用例 vars 全新、biz 拷贝继承（子的修改不回传） |
+| `invokeStandalone(id, input)` | 独立：全新上下文 + 空请求抽象，自动种子化 traceId（调度任务/消息消费等管道外场景） |
+
+**类型化客户端基类 `AbstractUseCaseClient<I, O>`**（推荐）：为每个 shared 用例声明一个客户端，业务代码像普通方法一样调用：
+
+```java
+@Component
+public class UserBaseClient extends AbstractUseCaseClient<String, UserDto> {
+    public UserBaseClient(UseCaseInvoker invoker) {
+        super(invoker, "userBaseEnrichment", UserDto.class);
+    }
+}
+
+@Component("greetingStep")
+public class GreetingStep implements DataTransformer {
+    public void execute(StepContext context) {
+        UserDto user = userBaseClient.invoke(String.valueOf(context.getBiz("businessId")));
+        context.setPayload(Map.of("greeting", "Hello, " + user.name()));
+    }
+}
+```
+
+机制：`UseCase.execute` 执行期间把当前 `StepContext` 绑定到执行线程（`StepContextHolder`），同线程 Java 代码无需传参即可继承上下文；嵌套执行保存/恢复上一层，管道结束必然清理。与 YAML 串联模式的差异：Java 调用是**函数式取值**——父 payload 总是被恢复，结果经返回值返回；异常语义一致（领域异常穿透子用例边界）。
+
+> 注意：`UseCaseInvoker` 内部以 `Supplier<UseCaseRegistry>` 延迟解析注册表——若直接持有 registry，`registry → ref step Bean → client → invoker` 会形成 Bean 创建循环（demo 的 `GreetingStep` 正是此形态）。
+
+## validator（入口校验）
+
+一般放在管道入口（`target: "#body"` 校验请求体，缺省 `#payload`）。两种互斥模式，装配期强制二选一：
+
+```yaml
+# schema 模式：JSON Schema 2020-12（networknt 3.x，装配期预编译）
+- name: validateBody
+  type: validator
+  config:
+    target: "#body"
+    schema:
+      type: object
+      required: [userId, name]
+      properties:
+        userId: { type: string, minLength: 1 }
+      additionalProperties: false
+
+# 函数模式：SpEL 返回 false 即失败；表达式抛出的领域异常原样传播走领域映射
+- name: checkCreditPass
+  type: validator
+  config:
+    expression: "#vars.credit.score >= 600"
+    message: "用户 #{biz.businessId} 信用分不足"   # 支持 #{} 模板
+    errorCode: "CREDIT_TOO_LOW"                    # 缺省 VALIDATION_ERROR
+```
+
+失败抛 `StepValidationException`：schema 模式附全部字段错误明细（最多 5 条）；HTTP 默认映射 **400**（`ErrorCoded.defaultHttpStatus()`），可被 `usecase.error-mappings` 覆盖。
+
+## logging
+
+```yaml
+- name: logCredit
+  type: logging
+  config:
+    level: INFO              # DEBUG/INFO/WARN/ERROR，缺省 INFO
+    message: "用户 #{biz.businessId} 信用分: #{vars.credit.score}"   # 缺省打印 payload
+```
+
+日志 category 为 `usecase.step.<stepName>`，可按步骤名定向治理级别；配合 MDC 的 `biz.*` 实现全链路关联。
+
+## SpEL 求值上下文
+
+| 变量 | 含义 | 示例 |
+|------|------|------|
+| `#path` / `#query` / `#headers` | 路径变量 / 查询参数 / 请求头 | `#path.id` |
+| `#body` | 请求体（JSON→Map/List） | `#body.items[0]` |
+| `#payload` | 当前主数据 | `#payload.id` |
+| `#vars` | 旁路命名结果 | `#vars.credit.score` |
+| `#biz` | 关键数据区（starter 写入） | `#biz.businessId` |
+| `@beanName` | 容器内任意 Bean | `@userRepository.getById(...)` |
+| `T(fqcn)` | 类型引用 | `T(com.example.UserId).of(...)` |
+
+内嵌字段（header 值、uriVariable 值）支持三种写法：字面量原样返回；`#{...}` 走模板拼接（如 `"Bearer #{vars.token}"`，模板以 StepContext 为根对象）；以 `#` / `@` / `T(` 开头按完整 SpEL 求值。
+
+> **Spring 7 注意**：内置 `MapAccessor` 自 6.1 起仅当 key 存在时才认领读取（为表达式编译服务），探测可选字段（如 `#body.reason`）会抛 EL1008E。框架注册了宽容的 `LenientMapAccessor`：Map 上缺失 key 一律返回 null，使 `#body.userId` 这类可选字段探测安全可用。
+
+## 认证（httpRequester.auth）
+
+| scheme | options | 说明 |
+|--------|---------|------|
+| `none` | — | 无认证（默认） |
+| `basic` | `username`, `password` | HTTP Basic |
+| `bearer` | `token` 或 `tokenProvider` | 静态令牌 / TokenProvider Bean 动态令牌 |
+| `apiKey` | `header`, `value` | 请求头形式的 API Key |
+| `clientCredentials` | `tokenUrl`, `clientId`, `clientSecret`, `scope?` | OAuth2 CC，自动换 token 并缓存（提前 60s 过期） |
+| 自定义 | 任意 | 实现 `AuthHandler` 注册为 Bean，`scheme()` 即类型名 |
+
+## 错误映射
+
+```yaml
+usecase:
+  error-mappings:
+    com.example.myapp.domain.exception.UserNotFoundException: 404   # 全限定名或简单类名
+```
+
+- 领域/框架异常（实现 `ErrorCoded` 或提供 `getErrorCode()`）：状态码按 **配置 → `@ResponseStatus` → `ErrorCoded.defaultHttpStatus()`（如校验失败默认 400）→ 500** 解析，<500 透传业务消息，≥500 固定文案；
+- 下游 HTTP 失败 / 连接超时 → 502 `DOWNSTREAM_ERROR`；
+- 兜底 → 500 `INTERNAL_ERROR`，绝不回显内部异常消息。
+
+> **Boot 绑定注意**：`Map<String, Object>` 类型的 step config 中，YAML 列表（如 validator 的 `required: [a, b]`）会被绑定成索引 Map（`{0=a, 1=b}`）。validator 装配期会把「键全为非负整数」的 Map 递归还原为 List；若自定义 step 的 config 含嵌套列表，需同样留意。
+
+## 扩展点
+
+1. **自定义 step**：`@Component("myStep") class MyStep implements DataTransformer` → YAML `ref: myStep`；
+2. **自定义 step 类型**：实现 `StepFactory`（`type()` 返回新类型名）注册为 Bean → YAML `type: myType`；
+3. **自定义认证**：实现 `AuthHandler` 注册为 Bean（同名 scheme 覆盖内置）；
+4. **自定义编解码算法**：实现 `Codec` 注册为 Bean，`algorithm()` 即算法名；
+5. **覆盖 RestClient**：定义名为 `useCaseRestClient` 的 Bean（自定义超时/拦截器/代理）。
+
+## 测试
+
+```bash
+mvn test
+```
+
+- `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装（零容器）；
+- `unit/framework/SpelStepTest`：SpEL 变量、`as` 旁路、saver null 保护（零容器）；
+- `unit/framework/StarterStepTest`：biz 关键数据区 + MDC 同步、keys 必填校验；
+- `unit/framework/CodecStepTest`：编解码互逆、单向摘要、decoder 可逆性装配期校验；
+- `unit/framework/LoggingStepTest`：消息模板渲染、级别路由（logback ListAppender 断言）；
+- `unit/framework/HttpRequesterStepTest`：MockRestServiceServer 验证 URI 模板、认证头、错误分支；
+- `unit/framework/SubUseCaseStepTest`：子用例 input/串联/旁路/as/isolate 数据传递语义（零容器）；
+- `unit/framework/ValidatorStepTest`：expression/schema 双模式、互斥校验、错误码与默认 400；
+- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、子用例 ref 存在性、循环引用（含自引用）检测；
+- `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义、父 payload 恢复、StepContextHolder 嵌套恢复；
+- `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成与透传 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / Java 调用子用例端点。
