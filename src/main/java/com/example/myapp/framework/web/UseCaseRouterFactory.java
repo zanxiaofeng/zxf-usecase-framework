@@ -22,11 +22,13 @@ import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.RouterFunctions;
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
+import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.Method;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 把 UseCaseRegistry 中所有用例绑定为一个 {@link RouterFunction}：
@@ -53,12 +55,16 @@ public final class UseCaseRouterFactory {
 
     /** biz 区中 traceId 的约定键名 */
     public static final String TRACE_ID_KEY = "traceId";
+    /** traceId 白名单：调用方传入的 X-Request-Id 不合法（含控制字符/分隔符等注入载荷）时丢弃重新生成 */
+    private static final Pattern TRACE_ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]{8,128}");
     private static final String CONTEXT_ATTRIBUTE = StepContext.class.getName();
 
     private final Map<String, Integer> errorMappings;
+    private final ObjectMapper objectMapper;
 
-    public UseCaseRouterFactory(Map<String, Integer> errorMappings) {
+    public UseCaseRouterFactory(Map<String, Integer> errorMappings, ObjectMapper objectMapper) {
         this.errorMappings = errorMappings;
+        this.objectMapper = objectMapper;
     }
 
     public RouterFunction<ServerResponse> build(UseCaseRegistry registry) {
@@ -79,7 +85,7 @@ public final class UseCaseRouterFactory {
     }
 
     private ServerResponse invoke(UseCase useCase, ServerRequest request) {
-        StepContext context = new StepContext(new WebExchangeRequest(request));
+        StepContext context = new StepContext(new WebExchangeRequest(request, objectMapper));
         seedTraceId(context);
         request.attributes().put(CONTEXT_ATTRIBUTE, context);
         try {
@@ -92,13 +98,18 @@ public final class UseCaseRouterFactory {
         }
     }
 
-    /** 种子化 traceId：优先复用调用方传入的 X-Request-Id，否则生成 UUID。 */
+    /**
+     * 种子化 traceId：优先复用调用方传入的 X-Request-Id（须匹配 {@link #TRACE_ID_PATTERN} 白名单，
+     * 防日志注入/响应头分裂，不合法即丢弃重新生成），否则生成 UUID。
+     * 同步写入 MDC（键 {@code traceId}），供 logback pattern {@code %X{traceId}} 全链路关联。
+     */
     private void seedTraceId(StepContext context) {
-        String traceId = context.getRequest().header("X-Request-Id");
-        if (traceId == null || traceId.isBlank()) {
-            traceId = UUID.randomUUID().toString();
-        }
+        String raw = context.getRequest().header("X-Request-Id");
+        String traceId = raw != null && TRACE_ID_PATTERN.matcher(raw).matches()
+                ? raw
+                : UUID.randomUUID().toString();
         context.putBiz(TRACE_ID_KEY, traceId);
+        MDC.put(TRACE_ID_KEY, traceId);
     }
 
     private String traceIdOf(StepContext context) {
@@ -106,14 +117,14 @@ public final class UseCaseRouterFactory {
         return value == null ? null : String.valueOf(value);
     }
 
-    /** 清理 starter 写入的 MDC（biz.* 前缀），避免容器线程复用导致日志串号。 */
+    /** 清理 starter 写入的 MDC（biz.* 前缀）与入口写入的 traceId，避免容器线程复用导致日志串号。 */
     private void clearBizMdc() {
         Map<String, String> mdcMap = MDC.getCopyOfContextMap();
         if (mdcMap == null) {
             return;
         }
         mdcMap.keySet().stream()
-                .filter(key -> key.startsWith(StarterStep.MDC_PREFIX))
+                .filter(key -> key.startsWith(StarterStep.MDC_PREFIX) || TRACE_ID_KEY.equals(key))
                 .forEach(MDC::remove);
     }
 

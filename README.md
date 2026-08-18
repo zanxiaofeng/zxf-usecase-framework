@@ -89,8 +89,8 @@ usecase:
 ```
 
 - 写入 `StepContext` 的 **biz 关键数据区**，后续步骤经 `#biz.businessId` 引用；
-- 非 null 值同步到日志 MDC（键 `biz.<key>`），请求结束由 Web 层自动清理，防止线程复用串号；
-- Web 入口在管道执行前自动写入 `traceId`（取 `X-Request-Id` 头，缺省生成 UUID），并回填到响应信封 `traceId` 字段。
+- 非 null 值同步到日志 MDC（键 `biz.<key>`，值剥离控制字符防日志注入），请求结束由 Web 层自动清理，防止线程复用串号；
+- Web 入口在管道执行前自动写入 `traceId`（取 `X-Request-Id` 头并做白名单校验 `[A-Za-z0-9_-]{8,128}`，不合法或缺失时生成 UUID），写入 MDC（键 `traceId`，供 logback `%X{traceId}` 全链路关联）并回填到响应信封 `traceId` 字段。
 
 ## encoder / decoder
 
@@ -197,7 +197,7 @@ public class GreetingStep implements DataTransformer {
     errorCode: "CREDIT_TOO_LOW"                    # 缺省 VALIDATION_ERROR
 ```
 
-失败抛 `StepValidationException`：schema 模式附全部字段错误明细（最多 5 条）；HTTP 默认映射 **400**（`ErrorCoded.defaultHttpStatus()`），可被 `usecase.error-mappings` 覆盖。
+失败抛 `StepValidationException`：schema 模式附全部字段错误明细（最多 5 条）；HTTP 默认映射 **400**（`ErrorCoded.defaultHttpStatus()`），可被 `usecase.error-mappings` 覆盖。异常语义：函数模式中 SpEL **求值失败**（如 `#vars.credit` 为 null 时取 `.score`）同样映射 400（消息附求值错误）；而表达式调用的 Bean 方法抛出的**领域异常**不经 SpEL 包装，原样传播走领域映射。
 
 ## logging
 
@@ -225,7 +225,7 @@ public class GreetingStep implements DataTransformer {
 
 内嵌字段（header 值、uriVariable 值）支持三种写法：字面量原样返回；`#{...}` 走模板拼接（如 `"Bearer #{vars.token}"`，模板以 StepContext 为根对象）；以 `#` / `@` / `T(` 开头按完整 SpEL 求值。
 
-> **Spring 7 注意**：内置 `MapAccessor` 自 6.1 起仅当 key 存在时才认领读取（为表达式编译服务），探测可选字段（如 `#body.reason`）会抛 EL1008E。框架注册了宽容的 `LenientMapAccessor`：Map 上缺失 key 一律返回 null，使 `#body.userId` 这类可选字段探测安全可用。
+> **Spring 7 注意**：内置 `MapAccessor` 自 6.1 起仅当 key 存在时才认领读取（为表达式编译服务），探测可选字段（如 `#body.reason`）会抛 EL1008E；且自 Framework 7 起已 deprecated forRemoval。框架注册了宽容的 `LenientMapAccessor`：Map 上缺失 key 一律返回 null，使 `#body.userId` 这类可选字段探测安全可用。表达式按原文缓存解析结果（键空间仅来自 YAML 配置，有限集合），避免每次执行重复构建语法树。
 
 ## 认证（httpRequester.auth）
 
@@ -235,7 +235,7 @@ public class GreetingStep implements DataTransformer {
 | `basic` | `username`, `password` | HTTP Basic |
 | `bearer` | `token` 或 `tokenProvider` | 静态令牌 / TokenProvider Bean 动态令牌 |
 | `apiKey` | `header`, `value` | 请求头形式的 API Key |
-| `clientCredentials` | `tokenUrl`, `clientId`, `clientSecret`, `scope?` | OAuth2 CC，自动换 token 并缓存（提前 60s 过期） |
+| `clientCredentials` | `tokenUrl`, `clientId`, `clientSecret`, `scope?` | OAuth2 CC，自动换 token 并缓存（提前 60s 过期；按 (tokenUrl, clientId) 分键原子刷新，不同端点互不阻塞；令牌端点调用默认连接 3s / 读取 10s） |
 | 自定义 | 任意 | 实现 `AuthHandler` 注册为 Bean，`scheme()` 即类型名 |
 
 ## 错误映射
@@ -247,10 +247,15 @@ usecase:
 ```
 
 - 领域/框架异常（实现 `ErrorCoded` 或提供 `getErrorCode()`）：状态码按 **配置 → `@ResponseStatus` → `ErrorCoded.defaultHttpStatus()`（如校验失败默认 400）→ 500** 解析，<500 透传业务消息，≥500 固定文案；
+- 请求体 JSON 语法错误 → 400 `BAD_REQUEST`（明确报错，而非静默置 null 导致误导性 schema 明细；空体仍为 null，非 JSON 内容类型按纯文本处理）；
 - 下游 HTTP 失败 / 连接超时 → 502 `DOWNSTREAM_ERROR`；
 - 兜底 → 500 `INTERNAL_ERROR`，绝不回显内部异常消息。
 
 > **Boot 绑定注意**：`Map<String, Object>` 类型的 step config 中，YAML 列表（如 validator 的 `required: [a, b]`）会被绑定成索引 Map（`{0=a, 1=b}`）。validator 装配期会把「键全为非负整数」的 Map 递归还原为 List；若自定义 step 的 config 含嵌套列表，需同样留意。
+
+> **覆盖顺序保证**：自定义 AuthHandler / Codec 与内置实现同名时**自定义覆盖内置**——装配时内置（与 SPI 接口同包）显式排前注册，不依赖 Bean 注入顺序（用户 @Component 通常先于 auto-config 注册，天然顺序会导致内置覆盖自定义）。
+
+> RouterFunction `onError` 之外的异常（Filter / 容器层 / 无匹配路由 404）会落到 Boot 默认 `/error` 端点；demo 已配置 `server.error.include-message/stacktrace/binding-errors: never` 关闭信息泄露。
 
 ## 扩展点
 
@@ -268,12 +273,14 @@ mvn test
 
 - `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装（零容器）；
 - `unit/framework/SpelStepTest`：SpEL 变量、`as` 旁路、saver null 保护（零容器）；
-- `unit/framework/StarterStepTest`：biz 关键数据区 + MDC 同步、keys 必填校验；
+- `unit/framework/StarterStepTest`：biz 关键数据区 + MDC 同步（含控制字符净化）、keys 必填校验；
 - `unit/framework/CodecStepTest`：编解码互逆、单向摘要、decoder 可逆性装配期校验；
 - `unit/framework/LoggingStepTest`：消息模板渲染、级别路由（logback ListAppender 断言）；
 - `unit/framework/HttpRequesterStepTest`：MockRestServiceServer 验证 URI 模板、认证头、错误分支；
 - `unit/framework/SubUseCaseStepTest`：子用例 input/串联/旁路/as/isolate 数据传递语义（零容器）；
-- `unit/framework/ValidatorStepTest`：expression/schema 双模式、互斥校验、错误码与默认 400；
-- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、子用例 ref 存在性、循环引用（含自引用）检测；
+- `unit/framework/ValidatorStepTest`：expression/schema 双模式、互斥校验、错误码与默认 400、求值失败映射 400；
+- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测；
 - `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义、父 payload 恢复、StepContextHolder 嵌套恢复；
-- `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成与透传 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / Java 调用子用例端点。
+- `unit/framework/ClientCredentialsAuthHandlerTest`：OAuth2 token 缓存命中与过期原子刷新；
+- `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
+- `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点。

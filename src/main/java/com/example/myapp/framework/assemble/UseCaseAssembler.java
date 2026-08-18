@@ -62,11 +62,13 @@ public final class UseCaseAssembler {
     }
 
     public UseCaseRegistry assemble(List<UseCaseDefinition> definitions) {
-        // 第一遍：定义校验 + id 收集
+        // 第一遍：定义校验 + id 收集（非空且唯一）
         Set<String> ids = new LinkedHashSet<>();
         for (UseCaseDefinition definition : definitions) {
             validateUseCase(definition);
-            ids.add(definition.id());
+            if (!ids.add(definition.id())) {
+                throw new UseCaseAssemblyException("duplicate usecase id: " + definition.id());
+            }
         }
         // 第二遍：子用例引用存在性 + 循环引用检测
         detectSubUseCaseCycles(buildSubUseCaseRefGraph(definitions, ids));

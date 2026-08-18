@@ -4,11 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,15 +28,37 @@ import java.util.concurrent.ConcurrentHashMap;
  *     clientSecret: "${svc.client-secret}"
  *     scope: "read"            # 可选
  * }</pre>
+ *
+ * <p>令牌缓存按 (tokenUrl, clientId) 分键，经 {@link ConcurrentHashMap#compute} 原子刷新：
+ * 同 key 并发请求只触发一次取牌，不同 key 之间互不阻塞。取牌失败异常传播
+ * （映射函数抛错时缓存条目不变，下次请求重试）。</p>
  */
 public final class ClientCredentialsAuthHandler implements AuthHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ClientCredentialsAuthHandler.class);
     private static final long EXPIRY_MARGIN_MILLIS = 60_000L;
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
 
-    /** 独立的令牌端调用客户端，与业务 RestClient 隔离 */
-    private final RestClient tokenClient = RestClient.create();
+    /** 独立的令牌端调用客户端，与业务 RestClient 隔离；默认连接 3s / 读取 10s，token 端点挂起不拖垮业务线程 */
+    private final RestClient tokenClient;
     private final Map<String, CachedToken> tokenCache = new ConcurrentHashMap<>();
+
+    /** 默认客户端带超时；需自定义超时/拦截器时经 {@link #ClientCredentialsAuthHandler(RestClient)} 注入 */
+    public ClientCredentialsAuthHandler() {
+        this(defaultTokenClient());
+    }
+
+    public ClientCredentialsAuthHandler(RestClient tokenClient) {
+        this.tokenClient = tokenClient;
+    }
+
+    private static RestClient defaultTokenClient() {
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(READ_TIMEOUT);
+        return RestClient.builder().requestFactory(requestFactory).build();
+    }
 
     @Override
     public String scheme() {
@@ -55,19 +80,8 @@ public final class ClientCredentialsAuthHandler implements AuthHandler {
 
     private String obtainToken(Map<String, Object> options) {
         String cacheKey = options.get("tokenUrl") + "|" + options.get("clientId");
-        CachedToken cached = tokenCache.get(cacheKey);
-        if (cached != null && !cached.expired()) {
-            return cached.value();
-        }
-        synchronized (tokenCache) {
-            cached = tokenCache.get(cacheKey);
-            if (cached != null && !cached.expired()) {
-                return cached.value();
-            }
-            CachedToken fresh = fetchToken(options);
-            tokenCache.put(cacheKey, fresh);
-            return fresh.value();
-        }
+        return tokenCache.compute(cacheKey, (key, cached) ->
+                cached == null || cached.expired() ? fetchToken(options) : cached).value();
     }
 
     @SuppressWarnings("unchecked")

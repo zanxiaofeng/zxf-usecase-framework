@@ -6,6 +6,7 @@ import com.example.myapp.framework.core.Validator;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.networknt.schema.Error;
 import com.networknt.schema.Schema;
+import org.springframework.expression.EvaluationException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -79,7 +80,15 @@ public final class ValidatorStep implements Validator {
     @Override
     public void execute(StepContext context) {
         if (expression != null) {
-            Object result = evaluator.evaluate(expression, context);
+            Object result;
+            try {
+                result = evaluator.evaluate(expression, context);
+            } catch (EvaluationException e) {
+                // SpEL 求值失败（如 #vars.credit 为 null 时取 .score）语义上是"校验无法通过"，
+                // 映射 400 而非 500。领域异常不经 SpEL 包装（bean 方法抛出时原样传播），仍走领域映射。
+                throw new StepValidationException(errorCode,
+                        renderMessage(context, null) + " (expression evaluation failed: " + e.getMessage() + ")");
+            }
             if (Boolean.FALSE.equals(result)) {
                 throw new StepValidationException(errorCode, renderMessage(context, null));
             }

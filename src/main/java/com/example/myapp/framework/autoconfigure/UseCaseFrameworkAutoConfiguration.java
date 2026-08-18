@@ -44,6 +44,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,10 +113,10 @@ public class UseCaseFrameworkAutoConfiguration {
 
     @Bean
     Map<String, AuthHandler> authHandlerMap(List<AuthHandler> handlers) {
+        // 内置先注册、自定义后注册：同名 scheme 时自定义覆盖内置（扩展契约，见 README 扩展点）。
+        // Bean 注入 List 的顺序随注册顺序不定，不能依赖其天然顺序决定覆盖方向。
         Map<String, AuthHandler> map = new LinkedHashMap<>();
-        for (AuthHandler handler : handlers) {
-            map.put(handler.scheme(), handler);
-        }
+        frameworkProvidedFirst(handlers, AuthHandler.class).forEach(handler -> map.put(handler.scheme(), handler));
         return map;
     }
 
@@ -208,11 +209,21 @@ public class UseCaseFrameworkAutoConfiguration {
 
     @Bean
     Map<String, Codec> codecMap(List<Codec> codecs) {
+        // 同 authHandlerMap：自定义算法后注册，同名覆盖内置
         Map<String, Codec> map = new LinkedHashMap<>();
-        for (Codec codec : codecs) {
-            map.put(codec.algorithm(), codec);
-        }
+        frameworkProvidedFirst(codecs, Codec.class).forEach(codec -> map.put(codec.algorithm(), codec));
         return map;
+    }
+
+    /**
+     * 内置实现（与 SPI 接口同包，即 framework.auth / framework.codec）排前、用户自定义排后，
+     * 保证后续 put 覆盖时自定义胜出。
+     */
+    private static <T> List<T> frameworkProvidedFirst(List<T> implementations, Class<T> spi) {
+        return implementations.stream()
+                .sorted(Comparator.comparing(implementation ->
+                        !implementation.getClass().getPackageName().startsWith(spi.getPackageName())))
+                .toList();
     }
 
     @Bean
@@ -246,8 +257,10 @@ public class UseCaseFrameworkAutoConfiguration {
     }
 
     @Bean
-    RouterFunction<ServerResponse> useCaseRouterFunction(UseCaseRegistry registry, UseCaseProperties properties) {
-        return new UseCaseRouterFactory(properties.errorMappings()).build(registry);
+    RouterFunction<ServerResponse> useCaseRouterFunction(UseCaseRegistry registry, UseCaseProperties properties,
+                                                         ObjectProvider<ObjectMapper> objectMapperProvider) {
+        ObjectMapper objectMapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
+        return new UseCaseRouterFactory(properties.errorMappings(), objectMapper).build(registry);
     }
 
     /** 启动日志：打印装配结果（路由表；shared 用例无 endpoint，标记为 shared） */

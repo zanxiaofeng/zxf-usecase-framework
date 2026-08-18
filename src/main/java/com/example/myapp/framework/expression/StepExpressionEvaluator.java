@@ -2,14 +2,16 @@ package com.example.myapp.framework.expression;
 
 import com.example.myapp.framework.core.ExchangeRequest;
 import com.example.myapp.framework.core.StepContext;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.expression.BeanFactoryResolver;
-import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.Expression;
+import org.springframework.expression.common.TemplateParserContext;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
-import org.springframework.expression.common.TemplateParserContext;
-import org.springframework.lang.Nullable;
+
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 步骤配置中的表达式求值器（SpEL）。
@@ -25,11 +27,21 @@ import org.springframework.lang.Nullable;
  *   <li>{@code @beanName}—— 应用上下文中的任意 Bean（出端口、服务等）</li>
  *   <li>{@code T(com.example.Foo)} —— 类型引用，用于静态工厂/构造</li>
  * </ul>
+ *
+ * <p>表达式按原文缓存解析结果（{@link Expression} 不可变且线程安全，可并发求值）。
+ * 键空间仅来自 YAML 配置（step 表达式、starter keys、header/uriVariable 模板），为有限集合，
+ * 缓存无界增长风险可控——避免了每个请求、每个 step 重复构建语法树的开销。</p>
  */
 public final class StepExpressionEvaluator {
 
     private static final SpelExpressionParser RAW_PARSER = new SpelExpressionParser();
     private static final TemplateParserContext TEMPLATE_CONTEXT = new TemplateParserContext();
+
+    /** 完整 SpEL 表达式缓存（step 的 expression/source/target 等） */
+    private final ConcurrentHashMap<String, Expression> expressionCache = new ConcurrentHashMap<>();
+
+    /** 模板表达式缓存（含 #{...} 的内嵌值，如 starter keys、header 值、logging message） */
+    private final ConcurrentHashMap<String, Expression> templateCache = new ConcurrentHashMap<>();
 
     @Nullable
     private final BeanFactory beanFactory;
@@ -40,7 +52,8 @@ public final class StepExpressionEvaluator {
 
     /** 求值一个完整 SpEL 表达式（step config.expression / body 使用）。 */
     public Object evaluate(String rawExpression, StepContext context) {
-        return RAW_PARSER.parseExpression(rawExpression).getValue(newEvaluationContext(context));
+        return expressionCache.computeIfAbsent(rawExpression, RAW_PARSER::parseExpression)
+                .getValue(newEvaluationContext(context));
     }
 
     /**
@@ -56,7 +69,9 @@ public final class StepExpressionEvaluator {
             return null;
         }
         if (value.contains("#{")) {
-            return RAW_PARSER.parseExpression(value, TEMPLATE_CONTEXT).getValue(newEvaluationContext(context));
+            return templateCache
+                    .computeIfAbsent(value, v -> RAW_PARSER.parseExpression(v, TEMPLATE_CONTEXT))
+                    .getValue(newEvaluationContext(context));
         }
         String trimmed = value.strip();
         if (trimmed.startsWith("#") || trimmed.startsWith("@") || trimmed.startsWith("T(") || trimmed.startsWith("T (")) {
@@ -68,9 +83,9 @@ public final class StepExpressionEvaluator {
     public EvaluationContext newEvaluationContext(StepContext context) {
         // 根对象 = StepContext：模板表达式可直接写 #{path.id} / #{payload.name} / #{vars.credit.score}
         StandardEvaluationContext evaluationContext = new StandardEvaluationContext(context);
-        // 宽容 Map 访问在前：缺失 key 返回 null（探测可选字段不抛错）；Spring 内置 MapAccessor 兜底
+        // 宽容 Map 访问器：对任意 Map 认领属性读取，缺失 key 返回 null（探测可选字段不抛 EL1008E）。
+        // 注：Spring 内置 MapAccessor 自 Framework 7 起已 deprecated forRemoval，不再注册兜底
         evaluationContext.addPropertyAccessor(new LenientMapAccessor());
-        evaluationContext.addPropertyAccessor(new MapAccessor());
         if (beanFactory != null) {
             evaluationContext.setBeanResolver(new BeanFactoryResolver(beanFactory));
         }

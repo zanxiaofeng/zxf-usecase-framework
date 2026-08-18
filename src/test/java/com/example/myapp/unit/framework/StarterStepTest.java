@@ -67,4 +67,22 @@ class StarterStepTest {
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("keys");
     }
+
+    @Test
+    void mdcValueStripsControlCharactersWhileBizKeepsRawValue() {
+        Map<String, Object> keys = Map.of("channel", "#headers['X-Channel']");
+        Step step = new StarterStepFactory(evaluator)
+                .create(new StepDefinition("start", "starter", null, Map.of("keys", keys)));
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("X-Channel", "mobile\r\nFAKE-LOG");   // 外部可控值带控制字符（日志注入载荷）
+        StepContext context = new StepContext(
+                new SimpleExchangeRequest("GET", "/x", Map.of(), Map.of(), headers, null));
+
+        step.execute(context);
+
+        // MDC（日志通道）剥离控制字符；biz（数据通道）保留原始值
+        assertThat(MDC.get("biz.channel")).isEqualTo("mobileFAKE-LOG");
+        assertThat(context.getBiz("channel")).isEqualTo("mobile\r\nFAKE-LOG");
+    }
 }

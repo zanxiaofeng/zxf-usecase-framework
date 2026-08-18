@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * 起始步骤：从请求中提取关键业务标识，写入 {@code biz} 关键数据区并同步日志 MDC。
@@ -32,6 +33,9 @@ public final class StarterStep implements Starter {
     /** MDC 键前缀，Web 层按此前缀清理 */
     public static final String MDC_PREFIX = "biz.";
 
+    /** MDC 值净化：剥离控制字符（换行/回车等），防止外部可控值（如 header）造成日志注入 */
+    private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cc}");
+
     private static final Logger log = LoggerFactory.getLogger(StarterStep.class);
 
     private final String name;
@@ -55,9 +59,14 @@ public final class StarterStep implements Starter {
             Object value = evaluator.resolve(expression, context);
             context.putBiz(key, value);
             if (value != null) {
-                MDC.put(MDC_PREFIX + key, String.valueOf(value));
+                MDC.put(MDC_PREFIX + key, sanitizeForMdc(String.valueOf(value)));
             }
         });
         log.debug("starter [{}] captured biz keys: {}", name, context.getBiz().keySet());
+    }
+
+    /** biz 区保留原始值（数据语义不变），仅日志通道（MDC）剥离控制字符。 */
+    private static String sanitizeForMdc(String value) {
+        return CONTROL_CHARS.matcher(value).replaceAll("");
     }
 }

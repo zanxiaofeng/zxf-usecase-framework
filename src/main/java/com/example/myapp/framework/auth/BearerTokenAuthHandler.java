@@ -1,8 +1,8 @@
 package com.example.myapp.framework.auth;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.lang.Nullable;
 import org.springframework.web.client.RestClient;
 
 import java.util.Map;

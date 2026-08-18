@@ -119,4 +119,13 @@ class UseCaseAssemblerTest {
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("exactly one of 'ref' or 'type'");
     }
+
+    @Test
+    void duplicateUsecaseIdFailsAtFirstPass() {
+        UseCaseDefinition first = new UseCaseDefinition("dup", null, true, null, List.of(loadStep()));
+        UseCaseDefinition second = new UseCaseDefinition("dup", null, true, null, List.of(loadStep()));
+        assertThatThrownBy(() -> assembler().assemble(List.of(first, second)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("duplicate usecase id: dup");
+    }
 }

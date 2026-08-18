@@ -42,6 +42,15 @@ class UseCaseRouterE2eTest {
     }
 
     @Test
+    void getUser_invalidCallerTraceIdIsRejectedAndRegenerated() throws Exception {
+        // 白名单 [A-Za-z0-9_-]{8,128} 之外的值（含 CRLF 注入载荷/过短值）丢弃，重新生成 UUID
+        mockMvc.perform(get("/api/v1/users/u1").header("X-Request-Id", "bad id\r\ninject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.traceId").value(org.hamcrest.Matchers.matchesPattern(
+                        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")));
+    }
+
+    @Test
     void getUserByToken_decodesBase64UrlToken() throws Exception {
         // "u1" 的 base64url 编码为 "dTE="
         mockMvc.perform(get("/api/v1/users/token/dTE="))
@@ -101,6 +110,17 @@ class UseCaseRouterE2eTest {
                         .content("{\"userId\":\"ghost\",\"name\":\"x\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    void createUserSnapshot_malformedJson_returns400WithBadRequestCode() throws Exception {
+        // 坏 JSON 不再静默为 null（导致误导性的 schema 明细），而是明确的 400 BAD_REQUEST
+        mockMvc.perform(post("/api/v1/user-snapshots")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\": bad json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Malformed JSON")));
     }
 
     // ------------------------------------------------------------------

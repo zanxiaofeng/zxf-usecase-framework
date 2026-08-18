@@ -73,6 +73,19 @@ class ValidatorStepTest {
                         e -> assertThat(e.getErrorCode()).isEqualTo("VALIDATION_ERROR"));
     }
 
+    @Test
+    void expressionEvaluationFailureMapsToValidation400() {
+        // #payload 为 null 时取 .score 抛 SpEL 求值异常：语义上是"校验无法通过"→ 400 而非 500
+        Step step = factory.create(new StepDefinition("check", "validator", null,
+                Map.of("expression", "#payload.score >= 600", "message", "信用分校验失败")));
+        assertThatThrownBy(() -> step.execute(contextWithPayload(null)))
+                .isInstanceOfSatisfying(StepValidationException.class, e -> {
+                    assertThat(e.getErrorCode()).isEqualTo("VALIDATION_ERROR");
+                    assertThat(e.defaultHttpStatus()).isEqualTo(400);
+                    assertThat(e.getMessage()).contains("信用分校验失败").contains("expression evaluation failed");
+                });
+    }
+
     // ------------------------------------------------------------------
     // schema 模式
     // ------------------------------------------------------------------

@@ -1,5 +1,11 @@
 server:
   port: 8080
+  # RouterFunction onError 之外的异常（Filter / 容器层 / 无匹配路由 404）会落到 Boot 默认 /error，
+  # 生产环境必须关闭信息泄露（exception-handling 规范 §6.5）
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
 
 spring:
   application:
