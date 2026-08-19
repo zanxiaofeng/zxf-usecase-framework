@@ -2,11 +2,26 @@
 
 在六边形架构之上，把「应用服务编排」下沉为框架能力：**usecase 由 YAML 声明，step 自动装配成管道，RouterFunction 完成 endpoint 绑定**。新增一个 API 往往只需要一段配置，无需再写 Controller / Service 样板代码。
 
+## 模块结构（Maven 多模块）
+
+```
+usecase-framework（聚合 POM）
+├── framework-core     # 框架本体（独立库 jar）：core/assemble/steps/auth/codec/expression/web
+│                      # + AutoConfiguration.imports —— 经 spring-boot 自动配置装配，可单独发布
+└── demo               # 演示应用（可执行 jar）：MyAppApplication + application/domain/infrastructure
+                       # + application.yml 用例定义 + e2e 测试
+```
+
 ## 快速开始
 
 ```bash
 # 技术基线：Java 21 · Spring Boot 4.1.x · Maven 3.9+
-mvn spring-boot:run
+# 根目录执行（-am 会先构建 framework-core）
+mvn -pl demo -am spring-boot:run
+
+# 或打包后运行
+mvn -pl demo -am package -DskipTests
+java -jar demo/target/usecase-framework-demo-1.0.0-SNAPSHOT.jar
 ```
 
 启动日志会打印装配出的路由表：
@@ -32,7 +47,7 @@ curl http://localhost:8080/api/v1/users/u1/profile
 
 ## 定义一个用例
 
-`src/main/resources/application.yml`：
+`demo/src/main/resources/application.yml`：
 
 ```yaml
 usecase:
@@ -268,7 +283,7 @@ usecase:
 ## 测试
 
 ```bash
-mvn test
+mvn test     # 根目录执行：framework-core（51）+ demo（12）两模块全量运行
 ```
 
 - `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装（零容器）；

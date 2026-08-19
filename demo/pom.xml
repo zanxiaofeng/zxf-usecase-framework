@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>usecase-framework</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>usecase-framework-demo</artifactId>
+    <name>usecase-framework-demo</name>
+    <description>框架演示应用：六边形业务示例（用户 / 信用画像 / 快照）+ e2e 测试</description>
+
+    <dependencies>
+        <!-- 框架本体（传递引入 webmvc / restclient / json-schema-validator） -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>usecase-framework-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- demo 自身的注解式 Controller（下游 stub）依赖 Web MVC -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- 测试（Spring Boot 4 起 MockMvc 自动配置拆分为独立测试模块） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

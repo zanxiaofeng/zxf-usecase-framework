@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean verify)",
+      "Bash(mvn test)",
+      "Bash(mvn compile)",
+      "Bash(mvn flyway:*)",
+      "Bash(./scripts/run-contract-tests.sh)",
+      "Bash(./scripts/fast-test.sh)",
+      "Bash(./scripts/full-ci.sh)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git checkout -f *)",
+      "Bash(git clean *)",
+      "Bash(git stash drop *)",
+      "Bash(mvn deploy *)",
+      "Bash(mvn release:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/*secret*)",
+      "Read(**/application-prod.yml)",
+      "Read(**/application-prod.properties)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git cherry-pick *)",
+      "Bash(mvn spring-boot:run)"
+    ],
+    "defaultMode": "acceptEdits"
+  },
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "denyRead": [
+        ".env",
+        ".env.*",
+        "**/*.key",
+        "**/*.pem",
+        "**/application-prod.yml",
+        "**/application-prod.properties"
+      ],
+      "denyWrite": [
+        ".env",
+        ".env.*",
+        "**/*.key",
+        "**/*.pem",
+        ".git/hooks/*"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "repo.maven.apache.org",
+        "*.github.com",
+        "start.spring.io"
+      ]
+    }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["-c", "echo \"Java: $(java -version 2>&1 | head -1)\" && echo \"Maven: $(mvn --version 2>/dev/null | head -1)\" && echo \"Branch: $(git branch --show-current)\""],
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["-c", "jq -r '.tool_input.command // empty' | grep -qiE '(rm\\s+-rf|git\\s+push|git\\s+reset\\s+--hard|curl|wget)' && echo 'Blocked: dangerous command detected' >&2 && exit 2 || exit 0"],
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["-c", "jq -r '.tool_input.file_path // empty' | grep -q '.java$' && mvn compile -q || exit 0"],
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["-c", "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreCompact\",\"additionalContext\":\"Context compaction imminent. Key rules: 4-layer hexagonal architecture (Domain -> Application -> Infrastructure -> Interfaces). TDD workflow: Red -> Green -> Refactor -> Contract Test. All Controllers return ApiResponse<T>. Constructor injection only. No business logic in Controllers.\"}}'"],
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mvn",
+            "args": ["test", "-q"],
+            "timeout": 120000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["-c", "cat"],
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  },
+  "autoMemoryEnabled": true,
+  "effortLevel": "high",
+  "language": "zh-CN",
+  "claudeMdExcludes": [
+    "copilot/"
+  ]
+}

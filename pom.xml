@@ -14,55 +14,18 @@
     <groupId>com.example</groupId>
     <artifactId>usecase-framework</artifactId>
     <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
     <name>usecase-framework</name>
-    <description>配置驱动的用例编排框架（基于六边形架构改造）：usecase 由 step 组成，RouterFunction 完成 endpoint 绑定</description>
+    <description>配置驱动的用例编排框架（基于六边形架构改造）：聚合 POM —— framework-core 框架本体 + demo 演示应用</description>
+
+    <modules>
+        <module>framework-core</module>
+        <module>demo</module>
+    </modules>
 
     <properties>
-        <!-- 技术栈基线：Java 21（沙箱验证时可降级 -Djava.version=17，Spring Boot 4 最低要求 Java 17） -->
+        <!-- 技术栈基线：Java 21（Spring Boot 4 最低要求 Java 17） -->
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
-
-    <dependencies>
-        <!-- 入站适配器：Web MVC（RouterFunction 所在，Spring Boot 4 起 starter 更名为 webmvc） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
-        </dependency>
-
-        <!-- 出站能力：RestClient（HttpRequester step 使用） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-restclient</artifactId>
-        </dependency>
-
-        <!-- Validator step：JSON Schema 校验（3.0.x 起基于 Jackson 3 / tools.jackson，与 Spring Boot 4 兼容） -->
-        <dependency>
-            <groupId>com.networknt</groupId>
-            <artifactId>json-schema-validator</artifactId>
-            <version>3.0.6</version>
-        </dependency>
-
-        <!-- 测试 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <!-- Spring Boot 4 起 MockMvc 自动配置拆分为独立测试模块 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-webmvc-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 </project>
