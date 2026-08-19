@@ -50,7 +50,7 @@ public final class HttpRequesterStepFactory implements StepFactory {
         }
 
         return new HttpRequesterStep(name, config.getMethod(), config.getUrl(), config.getUriVariables(),
-                config.getHeaders(), config.getBody(), new AuthSpec(authHandler, authOptions), config.getAs(),
+                config.getHeaders(), config.getBody(), new HttpRequesterStep.AuthSpec(authHandler, authOptions), config.getAs(),
                 restClient, evaluator);
     }
 }

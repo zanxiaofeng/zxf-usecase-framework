@@ -6,26 +6,21 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
-import com.example.myapp.framework.auth.ApiKeyAuthHandler;
 import com.example.myapp.framework.auth.AuthHandler;
 import com.example.myapp.framework.auth.BasicAuthHandler;
-import com.example.myapp.framework.auth.BearerTokenAuthHandler;
-import com.example.myapp.framework.auth.ClientCredentialsAuthHandler;
-import com.example.myapp.framework.auth.NoAuthHandler;
-import com.example.myapp.framework.codec.Base64Codec;
+import com.example.myapp.framework.auth.ClientCredentialsTokenSupplier;
 import com.example.myapp.framework.codec.Codec;
-import com.example.myapp.framework.codec.HexCodec;
+import com.example.myapp.framework.http.RestClients;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 内置/自定义注册顺序：同名 scheme / algorithm 时<b>自定义覆盖内置</b>（README 扩展点契约）。
- * Bean 注入 List 的顺序随注册顺序不定（用户 @Component 通常先于 auto-config 注册），
- * 因此不能依赖天然顺序决定覆盖方向——内置必须显式排前。
+ * 注册表 Map 装配：内置 scheme / algorithm 全部落位；用户自定义 Bean（List 注入的只剩自定义）
+ * 同名时覆盖内置（README 扩展点契约）。
  */
 class AutoConfigurationMapTest {
 
-    /** 模拟用户自定义实现：不在 SPI 接口包（com.example.myapp.framework.auth / codec）内 */
+    /** 模拟用户自定义实现：与内置 bearer 同名 scheme */
     private static final class CustomBearerHandler implements AuthHandler {
         @Override
         public String scheme() {
@@ -53,30 +48,27 @@ class AutoConfigurationMapTest {
     private final UseCaseFrameworkAutoConfiguration configuration = new UseCaseFrameworkAutoConfiguration();
 
     @Test
-    void customAuthHandlerOverridesBuiltInRegardlessOfInjectionOrder() {
-        List<AuthHandler> handlers = List.of(
-                new CustomBearerHandler(),                      // 自定义（同名覆盖目标），模拟注入顺序在前
-                new NoAuthHandler(),
-                new ApiKeyAuthHandler(),
-                new BasicAuthHandler(),
-                new BearerTokenAuthHandler(null),               // 内置 bearer
-                new ClientCredentialsAuthHandler());
+    void builtInAuthHandlersAreRegisteredByDefault() {
+        Map<String, AuthHandler> map = configuration.authHandlerMap(
+                List.of(), null, new ClientCredentialsTokenSupplier(RestClients.withDefaultTimeouts(RestClient.builder())));
 
-        Map<String, AuthHandler> map = configuration.authHandlerMap(handlers);
-
-        assertThat(map.get("bearer")).isInstanceOf(CustomBearerHandler.class);
-        assertThat(map).containsKeys("none", "basic", "apiKey", "clientCredentials");
+        assertThat(map).containsOnlyKeys("none", "basic", "bearer", "apiKey", "clientCredentials");
     }
 
     @Test
-    void customCodecOverridesBuiltInRegardlessOfInjectionOrder() {
-        List<Codec> codecs = List.of(
-                new CustomBase64Codec(),                        // 自定义（同名覆盖目标），模拟注入顺序在前
-                new Base64Codec(),
-                new HexCodec());
+    void customAuthHandlerOverridesBuiltInByScheme() {
+        Map<String, AuthHandler> map = configuration.authHandlerMap(
+                List.of(new CustomBearerHandler()), null, new ClientCredentialsTokenSupplier(RestClients.withDefaultTimeouts(RestClient.builder())));
 
-        Map<String, Codec> map = configuration.codecMap(codecs);
+        assertThat(map.get("bearer")).isInstanceOf(CustomBearerHandler.class);
+        assertThat(map.get("basic")).isInstanceOf(BasicAuthHandler.class);
+    }
+
+    @Test
+    void customCodecOverridesBuiltInByAlgorithm() {
+        Map<String, Codec> map = configuration.codecMap(List.of(new CustomBase64Codec()));
 
         assertThat(map.get("base64")).isInstanceOf(CustomBase64Codec.class);
+        assertThat(map).containsKeys("base64url", "url", "hex", "md5", "sha256");
     }
 }

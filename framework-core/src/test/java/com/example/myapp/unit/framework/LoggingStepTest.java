@@ -97,9 +97,9 @@ class LoggingStepTest {
 
         step.execute(context);
 
-        assertThat(appender.list).hasSize(2);
-        assertThat(appender.list.get(0).getFormattedMessage()).isEqualTo("checkpoint");
-        ILoggingEvent contextEvent = appender.list.get(1);
+        // logContext=true 时上下文转储替代主消息：仅一条 DEBUG 事件
+        assertThat(appender.list).hasSize(1);
+        ILoggingEvent contextEvent = appender.list.get(0);
         assertThat(contextEvent.getLevel().toString()).isEqualTo("DEBUG");
         assertThat(contextEvent.getFormattedMessage())
                 .contains("payload={id=u1}")

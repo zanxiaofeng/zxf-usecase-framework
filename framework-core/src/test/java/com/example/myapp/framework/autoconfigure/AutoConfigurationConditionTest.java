@@ -1,5 +1,7 @@
 package com.example.myapp.framework.autoconfigure;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -56,11 +58,16 @@ class AutoConfigurationConditionTest {
     }
 
     @Test
-    void customAuthHandlerBeanByName_replacesBuiltIn() {
-        // 同名 Bean 方法替换内置 basic 实现（@ConditionalOnMissingBean(name=...) 契约）
+    void customAuthHandlerBean_overridesBuiltInByScheme() {
+        // 内置 AuthHandler 非独立 Bean：自定义 Bean 经 authHandlerMap 同名 scheme 覆盖内置
         nonWebRunner
-                .withBean("basicAuthHandler", com.example.myapp.framework.auth.AuthHandler.class,
+                .withBean("myBasicAuthHandler", com.example.myapp.framework.auth.AuthHandler.class,
                         com.example.myapp.framework.auth.BasicAuthHandler::new)
-                .run(context -> assertThat(context).hasBean("basicAuthHandler"));
+                .run(context -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, com.example.myapp.framework.auth.AuthHandler> map =
+                            (Map<String, com.example.myapp.framework.auth.AuthHandler>) context.getBean("authHandlerMap");
+                    assertThat(map.get("basic")).isSameAs(context.getBean("myBasicAuthHandler"));
+                });
     }
 }

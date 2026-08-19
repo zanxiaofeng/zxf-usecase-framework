@@ -1,11 +1,11 @@
 package com.example.myapp.framework.autoconfigure;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.BeanFactory;
@@ -16,7 +16,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
@@ -30,6 +29,7 @@ import com.example.myapp.framework.auth.AuthHandler;
 import com.example.myapp.framework.auth.BasicAuthHandler;
 import com.example.myapp.framework.auth.BearerTokenAuthHandler;
 import com.example.myapp.framework.auth.ClientCredentialsAuthHandler;
+import com.example.myapp.framework.auth.ClientCredentialsTokenSupplier;
 import com.example.myapp.framework.auth.NoAuthHandler;
 import com.example.myapp.framework.codec.Base64Codec;
 import com.example.myapp.framework.codec.Base64UrlCodec;
@@ -41,6 +41,7 @@ import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.http.RestClients;
 import com.example.myapp.framework.steps.CodecStep;
 import com.example.myapp.framework.steps.CodecStepFactory;
 import com.example.myapp.framework.steps.EventPublisherStepFactory;
@@ -65,14 +66,15 @@ import com.example.myapp.framework.web.UseCaseRouterFactory;
  *
  * <p><b>条件化装配（starter 契约）</b>：</p>
  * <ul>
- *   <li>所有内置 Bean 均带 {@code @ConditionalOnMissingBean}——用户定义同名 Bean 方法
- *       （或同类型的 evaluator / registry / invoker）即可整体替换内置实现；</li>
+ *   <li>StepFactory / evaluator / registry / invoker / RestClient / 两个注册表 Map 均带
+ *       {@code @ConditionalOnMissingBean}——用户定义同名 Bean（或同类型的 evaluator /
+ *       registry / invoker / tokenSupplier）即可整体替换内置实现；</li>
  *   <li>仅 {@code useCaseRouterFunction} / {@code useCaseRouteLogger} 要求 Servlet Web 环境
  *       （{@code @ConditionalOnWebApplication}）——非 Web 应用引入本 jar 时管道装配
  *       （Registry / UseCaseInvoker / StepFactory）仍然可用，可经
  *       {@code UseCaseInvoker#invokeStandalone} 在管道外编程调用用例；</li>
- *   <li>自定义 AuthHandler / Codec 的<em>同名 scheme / algorithm 覆盖</em>走收集顺序机制
- *       （见 {@link #frameworkProvidedFirst}），与 Bean 替换机制正交。</li>
+ *   <li>内置 AuthHandler / Codec 不作为独立 Bean，在注册表 Map 工厂方法内直接落位；
+ *       用户注册同 scheme / algorithm 的自定义 Bean 即覆盖内置（见各 Map 方法）。</li>
  * </ul>
  */
 @Slf4j
@@ -80,68 +82,50 @@ import com.example.myapp.framework.web.UseCaseRouterFactory;
 @EnableConfigurationProperties(UseCaseProperties.class)
 public class UseCaseFrameworkAutoConfiguration {
 
-    /** SpEL 求值器（可访问容器 Bean：@repository 等出端口）；同类型自定义 Bean 可整体替换 */
+    /**
+     * SpEL 求值器（可访问容器 Bean：@repository 等出端口）；同类型自定义 Bean 可整体替换
+     */
     @Bean
     @ConditionalOnMissingBean(StepExpressionEvaluator.class)
     StepExpressionEvaluator stepExpressionEvaluator(BeanFactory beanFactory) {
         return new StepExpressionEvaluator(beanFactory);
     }
 
-    /** HttpRequester 步骤专用 RestClient：连接 3s / 读取 10s，可通过自定义同名 Bean 覆盖 */
+    /**
+     * HttpRequester 步骤专用 RestClient：连接 3s / 读取 10s（统一基线见 {@link RestClients}），可通过自定义同名 Bean 覆盖
+     */
     @Bean("useCaseRestClient")
     @ConditionalOnMissingBean(name = "useCaseRestClient")
     RestClient useCaseRestClient(RestClient.Builder builder) {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(3))
-                .build();
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(10));
-        return builder.requestFactory(requestFactory).build();
+        return RestClients.withDefaultTimeouts(builder);
     }
 
     // ------------------------------------------------------------------
-    // 内置 AuthHandler（同名 scheme 的自定义 Bean 在收集时覆盖内置实现；
-    // 同名 Bean 方法则经 @ConditionalOnMissingBean 直接替换内置实现）
+    // 内置 AuthHandler（不作为独立 Bean：在 map 工厂方法内直接注册，
+    // List<AuthHandler> 注入的只剩用户自定义 Bean，同名 scheme 覆盖内置不言自明）
     // ------------------------------------------------------------------
 
+    /**
+     * Client Credentials 令牌供应器（取牌 + 缓存）：独立 Bean 暴露——同类型自定义 Bean
+     * 可替换取牌客户端（超时/拦截器），令牌缓存在容器内唯一共享。
+     */
     @Bean
-    @ConditionalOnMissingBean(name = "noneAuthHandler")
-    AuthHandler noneAuthHandler() {
-        return new NoAuthHandler();
+    @ConditionalOnMissingBean(ClientCredentialsTokenSupplier.class)
+    ClientCredentialsTokenSupplier clientCredentialsTokenSupplier() {
+        return new ClientCredentialsTokenSupplier(RestClients.withDefaultTimeouts(RestClient.builder()));
     }
 
-    @Bean
-    @ConditionalOnMissingBean(name = "basicAuthHandler")
-    AuthHandler basicAuthHandler() {
-        return new BasicAuthHandler();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "bearerTokenAuthHandler")
-    AuthHandler bearerTokenAuthHandler(BeanFactory beanFactory) {
-        return new BearerTokenAuthHandler(beanFactory);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "apiKeyAuthHandler")
-    AuthHandler apiKeyAuthHandler() {
-        return new ApiKeyAuthHandler();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "clientCredentialsAuthHandler")
-    AuthHandler clientCredentialsAuthHandler() {
-        return new ClientCredentialsAuthHandler();
-    }
-
+    /**
+     * 内置 scheme 先落位、自定义 Bean 后覆盖：同名 scheme 时自定义胜出（扩展契约，见 README 扩展点）
+     */
     @Bean(name = "authHandlerMap")
     @ConditionalOnMissingBean(name = "authHandlerMap")
-    Map<String, AuthHandler> authHandlerMap(List<AuthHandler> handlers) {
-        // 内置先注册、自定义后注册：同名 scheme 时自定义覆盖内置（扩展契约，见 README 扩展点）。
-        // Bean 注入 List 的顺序随注册顺序不定，不能依赖其天然顺序决定覆盖方向。
-        Map<String, AuthHandler> map = new LinkedHashMap<>();
-        frameworkProvidedFirst(handlers, AuthHandler.class).forEach(handler -> map.put(handler.scheme(), handler));
-        return map;
+    Map<String, AuthHandler> authHandlerMap(List<AuthHandler> customHandlers, BeanFactory beanFactory,
+                                            ClientCredentialsTokenSupplier tokenSupplier) {
+
+        return Stream.of(new NoAuthHandler(), new BasicAuthHandler(), new BearerTokenAuthHandler(beanFactory),
+                        new ApiKeyAuthHandler(), new ClientCredentialsAuthHandler(tokenSupplier))
+                .collect(Collectors.toMap(AuthHandler::scheme, Function.identity()));
     }
 
     // ------------------------------------------------------------------
@@ -207,7 +191,9 @@ public class UseCaseFrameworkAutoConfiguration {
         return new EventPublisherStepFactory(beanFactory, evaluator);
     }
 
-    /** 校验步骤（schema / expression 二选一）。优先复用容器中的 Jackson ObjectMapper。 */
+    /**
+     * 校验步骤（schema / expression 二选一）。优先复用容器中的 Jackson ObjectMapper。
+     */
     @Bean
     @ConditionalOnMissingBean(name = "validatorStepFactory")
     StepFactory validatorStepFactory(StepExpressionEvaluator evaluator,
@@ -229,70 +215,27 @@ public class UseCaseFrameworkAutoConfiguration {
     }
 
     // ------------------------------------------------------------------
-    // 内置 Codec（注册自定义 Codec Bean 即可扩展算法）
+    // 内置 Codec（同 AuthHandler：非独立 Bean，自定义 Bean 同名 algorithm 覆盖内置）
     // ------------------------------------------------------------------
 
-    @Bean
-    @ConditionalOnMissingBean(name = "base64Codec")
-    Codec base64Codec() {
-        return new Base64Codec();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "base64UrlCodec")
-    Codec base64UrlCodec() {
-        return new Base64UrlCodec();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "urlCodec")
-    Codec urlCodec() {
-        return new UrlCodec();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "hexCodec")
-    Codec hexCodec() {
-        return new HexCodec();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "md5DigestCodec")
-    Codec md5DigestCodec() {
-        return new DigestCodec("md5");
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "sha256DigestCodec")
-    Codec sha256DigestCodec() {
-        return new DigestCodec("sha256");
-    }
-
+    /**
+     * 内置 algorithm 先落位、自定义 Bean 后覆盖：同名 algorithm 时自定义胜出（扩展契约，见 README 扩展点）
+     */
     @Bean(name = "codecMap")
     @ConditionalOnMissingBean(name = "codecMap")
-    Map<String, Codec> codecMap(List<Codec> codecs) {
-        // 同 authHandlerMap：自定义算法后注册，同名覆盖内置
-        Map<String, Codec> map = new LinkedHashMap<>();
-        frameworkProvidedFirst(codecs, Codec.class).forEach(codec -> map.put(codec.algorithm(), codec));
-        return map;
-    }
-
-    /**
-     * 内置实现（与 SPI 接口同包，即 framework.auth / framework.codec）排前、用户自定义排后，
-     * 保证后续 put 覆盖时自定义胜出。
-     */
-    private static <T> List<T> frameworkProvidedFirst(List<T> implementations, Class<T> spi) {
-        return implementations.stream()
-                .sorted(Comparator.comparing(implementation ->
-                        !implementation.getClass().getPackageName().startsWith(spi.getPackageName())))
-                .toList();
+    Map<String, Codec> codecMap(List<Codec> customCodecs) {
+        return Stream.of(new Base64Codec(), new Base64UrlCodec(), new UrlCodec(),
+                        new HexCodec(), new DigestCodec("md5"), new DigestCodec("sha256"))
+                .collect(Collectors.toMap(Codec::algorithm, Function.identity()));
     }
 
     // ------------------------------------------------------------------
     // 装配与路由绑定
     // ------------------------------------------------------------------
 
-    /** 用例注册表（同类型自定义 Bean 可整体替换，接管装配流程） */
+    /**
+     * 用例注册表（同类型自定义 Bean 可整体替换，接管装配流程）
+     */
     @Bean
     @ConditionalOnMissingBean(UseCaseRegistry.class)
     UseCaseRegistry useCaseRegistry(UseCaseProperties properties, BeanFactory beanFactory,

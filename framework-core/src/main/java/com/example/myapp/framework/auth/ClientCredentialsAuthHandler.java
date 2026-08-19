@@ -27,15 +27,6 @@ public final class ClientCredentialsAuthHandler implements AuthHandler {
 
     private final ClientCredentialsTokenSupplier tokenSupplier;
 
-    public ClientCredentialsAuthHandler() {
-        this(new ClientCredentialsTokenSupplier());
-    }
-
-    /** 自定义令牌端 RestClient（超时/拦截器）的便利入口，等价于注入 token supplier */
-    public ClientCredentialsAuthHandler(RestClient tokenClient) {
-        this(new ClientCredentialsTokenSupplier(tokenClient));
-    }
-
     @Override
     public String scheme() {
         return "clientCredentials";

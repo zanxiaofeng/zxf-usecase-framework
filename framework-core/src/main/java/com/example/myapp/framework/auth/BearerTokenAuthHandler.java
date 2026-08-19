@@ -36,7 +36,12 @@ public final class BearerTokenAuthHandler implements AuthHandler {
         Object token = options.get("token");
         if (token == null) {
             Object providerName = options.get("tokenProvider");
-            if (providerName != null && beanFactory != null) {
+            if (providerName != null) {
+                if (beanFactory == null) {
+                    throw new IllegalStateException(
+                            "auth scheme 'bearer': tokenProvider '%s' configured but no Spring container available"
+                                    .formatted(providerName));
+                }
                 token = beanFactory.getBean(String.valueOf(providerName), TokenProvider.class).getToken();
             }
         }
@@ -50,6 +55,13 @@ public final class BearerTokenAuthHandler implements AuthHandler {
     public void validate(Map<String, Object> options) {
         if (options.get("token") == null && options.get("tokenProvider") == null) {
             throw new IllegalArgumentException("auth scheme 'bearer' requires options.token or options.tokenProvider");
+        }
+        // Bean 名拼错装配期即报错（containsBean 查 BeanDefinition 注册表，装配期已就绪），不留到首次请求
+        if (options.get("tokenProvider") != null && beanFactory != null
+                && !beanFactory.containsBean(String.valueOf(options.get("tokenProvider")))) {
+            throw new IllegalArgumentException(
+                    "auth scheme 'bearer': tokenProvider bean '%s' not found"
+                            .formatted(options.get("tokenProvider")));
         }
     }
 }

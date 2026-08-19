@@ -18,7 +18,7 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
  *   config:
  *     level: INFO                                        # TRACE/DEBUG/INFO/WARN/ERROR，缺省 INFO
  *     message: "用户 #{biz.businessId} 信用分 #{vars.credit.score}"   # 缺省打印 payload
- *     logContext: true                                   # 可选；true 时以 DEBUG 输出上下文全部内容
+ *     logContext: true                                   # 可选；true 时以 DEBUG 输出上下文全部内容（替代主消息）
  * }</pre>
  *
  * <p>日志 category 为 {@code usecase.<useCaseId>.step.<stepName>}，可按用例或步骤名定向治理日志级别；

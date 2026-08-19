@@ -269,7 +269,7 @@ usecase:
 
 > **Boot 绑定注意**：`Map<String, Object>` 类型的 step config 中，YAML 列表（如 validator 的 `required: [a, b]`）会被绑定成索引 Map（`{0=a, 1=b}`）。validator 装配期会把「键全为非负整数」的 Map 递归还原为 List；若自定义 step 的 config 含嵌套列表，需同样留意。
 
-> **覆盖顺序保证**：自定义 AuthHandler / Codec 与内置实现同名时**自定义覆盖内置**——装配时内置（与 SPI 接口同包）显式排前注册，不依赖 Bean 注入顺序（用户 @Component 通常先于 auto-config 注册，天然顺序会导致内置覆盖自定义）。
+> **覆盖顺序保证**：自定义 AuthHandler / Codec 与内置实现同名时**自定义覆盖内置**——内置实现在注册表 Map 装配时先落位，用户自定义 Bean 后覆盖，不依赖 Bean 注入顺序。
 
 > RouterFunction `onError` 之外的异常（Filter / 容器层 / 无匹配路由 404）会落到 Boot 默认 `/error` 端点；demo 已配置 `server.error.include-message/stacktrace/binding-errors: never` 关闭信息泄露。
 
@@ -281,7 +281,7 @@ usecase:
 4. **自定义编解码算法**：实现 `Codec` 注册为 Bean，`algorithm()` 即算法名；
 5. **事件发布**：实现 `EventPublisher` 注册为 Bean（Kafka / 事务性发件箱 / webhook……）；事务时机（afterCommit）由框架的 eventPublisher 步骤统一保障，实现方只管真实外发（建议幂等 + 自行重试）；
 6. **覆盖 RestClient**：定义名为 `useCaseRestClient` 的 Bean（自定义超时/拦截器/代理）；
-7. **替换任意内置 Bean**：自动配置的全部内置 Bean 均带 `@ConditionalOnMissingBean`——定义**同名 Bean**（如 `dataLoaderStepFactory`、`bearerTokenAuthHandler`）即整体替换内置实现；`StepExpressionEvaluator` / `UseCaseRegistry` / `UseCaseInvoker` 按**类型**判断（任意 Bean 名均可替换）；
+7. **替换任意内置 Bean**：自动配置的内置 Bean 均带 `@ConditionalOnMissingBean`——定义**同名 Bean**（如 `dataLoaderStepFactory`、`useCaseRestClient`）即整体替换内置实现；`StepExpressionEvaluator` / `UseCaseRegistry` / `UseCaseInvoker` / `ClientCredentialsTokenSupplier` 按**类型**判断（任意 Bean 名均可替换）。内置 AuthHandler / Codec 非独立 Bean，覆盖走第 3、4 条的 scheme / algorithm 机制；
 8. **非 Web 应用**：路由绑定仅 Servlet Web 环境装配（`@ConditionalOnWebApplication`）；非 Web 项目引入 framework-core 时管道装配（Registry / UseCaseInvoker / StepFactory）仍然可用，经 `UseCaseInvoker.invokeStandalone` 在管道外编程调用用例（无入站请求，上下文经 `StepContext.standalone()` 创建）。`usecase.definitions` 为空时应用正常启动（空路由，不绑定任何端点）。
 
 ## 测试
