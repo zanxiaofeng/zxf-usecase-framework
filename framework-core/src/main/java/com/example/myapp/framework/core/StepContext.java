@@ -26,6 +26,9 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public final class StepContext {
 
+    /** biz 区中 traceId 的约定键名（Web 入口与 standalone 调用共享的契约；MDC 键同名，供日志 pattern 关联） */
+    public static final String TRACE_ID_KEY = "traceId";
+
     /** 入站请求；{@link #standalone()} 场景为 null */
     @Getter
     private final @Nullable ServerRequest request;

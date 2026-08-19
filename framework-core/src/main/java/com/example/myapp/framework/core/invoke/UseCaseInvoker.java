@@ -37,9 +37,6 @@ import com.example.myapp.framework.core.UseCaseRegistry;
 @RequiredArgsConstructor
 public final class UseCaseInvoker {
 
-    /** biz 区中 traceId 的约定键名（与 framework.web.UseCaseRouterFactory 的 Web 入口契约一致） */
-    private static final String TRACE_ID_KEY = "traceId";
-
     private final Supplier<UseCaseRegistry> registrySupplier;
     private volatile UseCaseRegistry registry;
 
@@ -95,7 +92,7 @@ public final class UseCaseInvoker {
     public Object invokeStandalone(String useCaseId, Object input) {
         UseCase target = registry().require(useCaseId);
         StepContext context = StepContext.standalone();
-        context.putBiz(TRACE_ID_KEY, UUID.randomUUID().toString());
+        context.putBiz(StepContext.TRACE_ID_KEY, UUID.randomUUID().toString());
         context.setPayload(input);
         return target.execute(context);
     }

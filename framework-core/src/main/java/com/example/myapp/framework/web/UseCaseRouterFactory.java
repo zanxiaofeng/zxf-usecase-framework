@@ -36,8 +36,6 @@ import com.example.myapp.framework.steps.StarterStep;
  */
 public final class UseCaseRouterFactory {
 
-    /** biz 区中 traceId 的约定键名 */
-    public static final String TRACE_ID_KEY = "traceId";
     /** traceId 白名单：调用方传入的 X-Request-Id 不合法（含控制字符/分隔符等注入载荷）时丢弃重新生成 */
     private static final Pattern TRACE_ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]{8,128}");
     /** 请求属性中 StepContext 的键（ErrorResponseMapper 取 traceId 用） */
@@ -107,12 +105,12 @@ public final class UseCaseRouterFactory {
         String traceId = raw != null && TRACE_ID_PATTERN.matcher(raw).matches()
                 ? raw
                 : UUID.randomUUID().toString();
-        context.putBiz(TRACE_ID_KEY, traceId);
-        MDC.put(TRACE_ID_KEY, traceId);
+        context.putBiz(StepContext.TRACE_ID_KEY, traceId);
+        MDC.put(StepContext.TRACE_ID_KEY, traceId);
     }
 
     static String traceIdOf(StepContext context) {
-        Object value = context.getBiz(TRACE_ID_KEY);
+        Object value = context.getBiz(StepContext.TRACE_ID_KEY);
         return value == null ? null : String.valueOf(value);
     }
 
@@ -123,7 +121,7 @@ public final class UseCaseRouterFactory {
             return;
         }
         mdcMap.keySet().stream()
-                .filter(key -> key.startsWith(StarterStep.MDC_PREFIX) || TRACE_ID_KEY.equals(key))
+                .filter(key -> key.startsWith(StarterStep.MDC_PREFIX) || StepContext.TRACE_ID_KEY.equals(key))
                 .forEach(MDC::remove);
     }
 }

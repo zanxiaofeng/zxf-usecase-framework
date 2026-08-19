@@ -123,9 +123,12 @@ public class UseCaseFrameworkAutoConfiguration {
     Map<String, AuthHandler> authHandlerMap(List<AuthHandler> customHandlers, BeanFactory beanFactory,
                                             ClientCredentialsTokenSupplier tokenSupplier) {
 
-        return Stream.of(new NoAuthHandler(), new BasicAuthHandler(), new BearerTokenAuthHandler(beanFactory),
-                        new ApiKeyAuthHandler(), new ClientCredentialsAuthHandler(tokenSupplier))
-                .collect(Collectors.toMap(AuthHandler::scheme, Function.identity()));
+        return Stream.concat(
+                        Stream.of(new NoAuthHandler(), new BasicAuthHandler(), new BearerTokenAuthHandler(beanFactory),
+                                new ApiKeyAuthHandler(), new ClientCredentialsAuthHandler(tokenSupplier)),
+                        customHandlers.stream())
+                .collect(Collectors.toMap(AuthHandler::scheme, Function.identity(),
+                        (builtIn, custom) -> custom, LinkedHashMap::new));
     }
 
     // ------------------------------------------------------------------
@@ -224,9 +227,12 @@ public class UseCaseFrameworkAutoConfiguration {
     @Bean(name = "codecMap")
     @ConditionalOnMissingBean(name = "codecMap")
     Map<String, Codec> codecMap(List<Codec> customCodecs) {
-        return Stream.of(new Base64Codec(), new Base64UrlCodec(), new UrlCodec(),
-                        new HexCodec(), new DigestCodec("md5"), new DigestCodec("sha256"))
-                .collect(Collectors.toMap(Codec::algorithm, Function.identity()));
+        return Stream.concat(
+                        Stream.of(new Base64Codec(), new Base64UrlCodec(), new UrlCodec(),
+                                new HexCodec(), new DigestCodec("md5"), new DigestCodec("sha256")),
+                        customCodecs.stream())
+                .collect(Collectors.toMap(Codec::algorithm, Function.identity(),
+                        (builtIn, custom) -> custom, LinkedHashMap::new));
     }
 
     // ------------------------------------------------------------------

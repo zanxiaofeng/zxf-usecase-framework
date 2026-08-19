@@ -32,7 +32,7 @@ public final class UseCase {
      * 依次执行管道内所有 step，返回最终 payload。
      *
      * <p>执行期间把上下文绑定到 {@link StepContextHolder}（同线程 Java 代码可经
-     * {@link UseCaseInvoker} 继承上下文调用子用例），结束后恢复上一层。</p>
+     * {@code UseCaseInvoker}（core.invoke 包）继承上下文调用子用例），结束后恢复上一层。</p>
      *
      * @throws StepExecutionException 任一步骤失败时抛出（步骤抛出的 StepExecutionException 原样上抛）
      */
