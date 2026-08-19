@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 
 /**
  * 已装配用例的注册表。装配期对重复 id 直接报错（fail-fast）。

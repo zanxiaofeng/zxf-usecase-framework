@@ -1,15 +1,12 @@
 package com.example.myapp.framework.assemble;
 
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.config.UseCaseDefinition;
-import com.example.myapp.framework.core.EndpointSpec;
+import com.example.myapp.framework.core.UseCase.EndpointSpec;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.http.HttpMethod;
@@ -43,9 +40,8 @@ import java.util.Set;
  *   <li>其余情况 → ref（Step Bean 名）与 type（内置/扩展类型）必须二选一。</li>
  * </ul>
  */
+@Slf4j
 public final class UseCaseAssembler {
-
-    private static final Logger log = LoggerFactory.getLogger(UseCaseAssembler.class);
 
     private final BeanFactory beanFactory;
     private final Map<String, StepFactory> factories;
@@ -83,8 +79,8 @@ public final class UseCaseAssembler {
             UseCaseDefinition.Endpoint endpoint = definition.endpoint();
             EndpointSpec endpointSpec = definition.isShared()
                     ? null
-                    : new EndpointSpec(endpoint.method().toUpperCase(Locale.ROOT), endpoint.path(),
-                            endpoint.statusOrDefault());
+                    : new EndpointSpec(HttpMethod.valueOf(endpoint.method().toUpperCase(Locale.ROOT)),
+                            endpoint.path(), endpoint.statusOrDefault());
             assembled.add(new UseCase(definition.id(), definition.description(), endpointSpec, steps,
                     definition.isShared()));
         }

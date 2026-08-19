@@ -1,7 +1,7 @@
 package com.example.myapp.framework.expression;
 
-import com.example.myapp.framework.core.ExchangeRequest;
 import com.example.myapp.framework.core.StepContext;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.expression.BeanFactoryResolver;
@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 键空间仅来自 YAML 配置（step 表达式、starter keys、header/uriVariable 模板），为有限集合，
  * 缓存无界增长风险可控——避免了每个请求、每个 step 重复构建语法树的开销。</p>
  */
+@RequiredArgsConstructor
 public final class StepExpressionEvaluator {
 
     private static final SpelExpressionParser RAW_PARSER = new SpelExpressionParser();
@@ -45,10 +46,6 @@ public final class StepExpressionEvaluator {
 
     @Nullable
     private final BeanFactory beanFactory;
-
-    public StepExpressionEvaluator(@Nullable BeanFactory beanFactory) {
-        this.beanFactory = beanFactory;
-    }
 
     /** 求值一个完整 SpEL 表达式（step config.expression / body 使用）。 */
     public Object evaluate(String rawExpression, StepContext context) {
@@ -89,11 +86,10 @@ public final class StepExpressionEvaluator {
         if (beanFactory != null) {
             evaluationContext.setBeanResolver(new BeanFactoryResolver(beanFactory));
         }
-        ExchangeRequest request = context.getRequest();
-        evaluationContext.setVariable("path", request.pathVariables());
-        evaluationContext.setVariable("query", request.queryParams());
-        evaluationContext.setVariable("headers", request.headers());
-        evaluationContext.setVariable("body", request.body());
+        evaluationContext.setVariable("path", context.getPath());
+        evaluationContext.setVariable("query", context.getQuery());
+        evaluationContext.setVariable("headers", context.getHeaders());
+        evaluationContext.setVariable("body", context.getBody());
         evaluationContext.setVariable("payload", context.getPayload());
         evaluationContext.setVariable("vars", context.getVars());
         evaluationContext.setVariable("biz", context.getBiz());

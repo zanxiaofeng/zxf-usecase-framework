@@ -1,11 +1,10 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.StepValidationException;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.StepValidationException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.ValidatorStepFactory;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,7 @@ class ValidatorStepTest {
             new ValidatorStepFactory(new StepExpressionEvaluator(null), new ObjectMapper());
 
     private StepContext contextWithPayload(Object payload) {
-        StepContext context = new StepContext(SimpleExchangeRequest.of("POST", "/x"));
+        StepContext context = StepContext.standalone();
         context.setPayload(payload);
         return context;
     }

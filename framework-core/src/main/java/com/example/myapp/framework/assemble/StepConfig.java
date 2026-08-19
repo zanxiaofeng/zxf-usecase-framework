@@ -1,7 +1,6 @@
 package com.example.myapp.framework.assemble;
 
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 
 import java.util.Map;
 

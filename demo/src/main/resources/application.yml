@@ -179,6 +179,7 @@ usecase:
       endpoint:
         method: POST
         path: /api/v1/user-snapshots
+        status: 201              # POST 创建资源 → 201 Created（api-conventions）
       steps:
         - name: start
           type: starter
@@ -223,3 +224,8 @@ usecase:
           type: dataSaver
           config:
             expression: "@profileSnapshotRepository.save(#payload)"
+        - name: publishSnapshotCreated           # 快照落库后发布领域事件（纯副作用，不改数据）
+          type: eventPublisher
+          config:
+            event: "T(com.example.myapp.domain.event.SnapshotCreatedEvent).of(#payload.snapshotId, #body.userId)"
+            # publisher: 缺省取容器中唯一的 EventPublisher（demo 为 InMemoryEventPublisherAdapter）

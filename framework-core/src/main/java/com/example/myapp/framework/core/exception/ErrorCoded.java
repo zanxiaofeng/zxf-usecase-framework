@@ -1,4 +1,4 @@
-package com.example.myapp.framework.core;
+package com.example.myapp.framework.core.exception;
 
 /**
  * 携带稳定错误码的异常契约。领域异常实现本接口后，传输层可直接把 errorCode 写入响应体。

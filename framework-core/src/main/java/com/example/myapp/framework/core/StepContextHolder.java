@@ -1,5 +1,7 @@
 package com.example.myapp.framework.core;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * 当前管道上下文的线程级持有者。
  *
@@ -10,27 +12,25 @@ package com.example.myapp.framework.core;
  *
  * <p>纯 JDK 实现，core 层保持零框架依赖。</p>
  */
-public final class StepContextHolder {
+@UtilityClass
+public class StepContextHolder {
 
-    private static final ThreadLocal<StepContext> CURRENT = new ThreadLocal<>();
-
-    private StepContextHolder() {
-    }
+    private final ThreadLocal<StepContext> CURRENT = new ThreadLocal<>();
 
     /** 当前线程正在执行的管道上下文；不在任何管道内（如定时任务、纯 Java 调用）时返回 null */
-    public static StepContext current() {
+    public StepContext current() {
         return CURRENT.get();
     }
 
     /** 绑定新上下文，返回被替换的上一层上下文（嵌套恢复用） */
-    static StepContext set(StepContext context) {
+    StepContext set(StepContext context) {
         StepContext previous = CURRENT.get();
         CURRENT.set(context);
         return previous;
     }
 
     /** 恢复上一层上下文；上一层为 null 时彻底清理 */
-    static void restore(StepContext previous) {
+    void restore(StepContext previous) {
         if (previous == null) {
             CURRENT.remove();
         } else {

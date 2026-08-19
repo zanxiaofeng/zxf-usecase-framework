@@ -1,4 +1,4 @@
-package com.example.myapp.framework.core;
+package com.example.myapp.framework.core.exception;
 
 /**
  * 校验步骤失败异常：携带稳定错误码（缺省 VALIDATION_ERROR）与可读消息（含 schema 失败明细）。

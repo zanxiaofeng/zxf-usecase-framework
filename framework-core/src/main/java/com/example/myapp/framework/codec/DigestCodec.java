@@ -14,10 +14,15 @@ public final class DigestCodec implements Codec {
     private final String algorithm;
     private final String jcaName;
 
-    /** @param algorithm 对外算法名，如 "md5" / "sha256"（JCA 名自动映射为大写无横线形式） */
+    /** @param algorithm 对外算法名，如 "md5" / "sha256"（JCA 名自动映射为大写无横线形式）；不支持时构造期快失败 */
     public DigestCodec(String algorithm) {
         this.algorithm = algorithm.toLowerCase(Locale.ROOT);
         this.jcaName = algorithm.toUpperCase(Locale.ROOT).replace("-", "");
+        try {
+            MessageDigest.getInstance(this.jcaName);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalArgumentException("unsupported digest algorithm: " + algorithm, e);
+        }
     }
 
     @Override
@@ -28,10 +33,11 @@ public final class DigestCodec implements Codec {
     @Override
     public String encode(String plain) {
         try {
-            MessageDigest digest = MessageDigest.getInstance(jcaName);
-            return HexFormat.of().formatHex(digest.digest(plain.getBytes(StandardCharsets.UTF_8)));
+            // MessageDigest 非线程安全，不能缓存为字段——每次获取新实例（算法已在构造期验证）
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance(jcaName).digest(plain.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("unsupported digest algorithm: " + jcaName, e);
+            throw new IllegalStateException("unreachable: algorithm validated at construction", e);
         }
     }
 

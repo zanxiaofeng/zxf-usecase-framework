@@ -1,4 +1,4 @@
-package com.example.myapp.framework.config;
+package com.example.myapp.framework.assemble;
 
 import java.util.Map;
 

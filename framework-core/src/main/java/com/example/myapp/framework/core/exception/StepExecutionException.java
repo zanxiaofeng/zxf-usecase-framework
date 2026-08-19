@@ -1,4 +1,4 @@
-package com.example.myapp.framework.core;
+package com.example.myapp.framework.core.exception;
 
 /**
  * 步骤执行失败：携带 useCaseId 与 stepName，cause 为原始异常（领域异常、下游调用异常等）。

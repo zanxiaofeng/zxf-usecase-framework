@@ -1,8 +1,8 @@
 package com.example.myapp.application.client;
 
 import com.example.myapp.application.dto.UserDto;
-import com.example.myapp.framework.core.AbstractUseCaseClient;
-import com.example.myapp.framework.core.UseCaseInvoker;
+import com.example.myapp.framework.core.invoke.AbstractUseCaseClient;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import org.springframework.stereotype.Component;
 
 /**

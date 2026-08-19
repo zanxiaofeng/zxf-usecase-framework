@@ -2,9 +2,9 @@ package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.assemble.StepConfig;
 import com.example.myapp.framework.assemble.StepFactory;
-import com.example.myapp.framework.config.StepDefinition;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 
 /**

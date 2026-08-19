@@ -11,6 +11,11 @@ package com.example.myapp.framework.core;
  *   <li>{@link DataSaver} —— 将 payload 保存到出端口</li>
  * </ul>
  *
+ * <p>角色接口是主数据流的核心抽象，也是治理锚点（按角色做配置审查/耗时统计）。其余内置 step 类型
+ * 按语义就近归并：encoder/decoder 是数据变换的特例（实现 DataTransformer）；starter / logging /
+ * validator / usecase / eventPublisher 为守卫/横切/组合动作，直接实现本接口。自定义 Step 同样自由
+ * 选择：命中主数据流语义时实现对应角色，否则实现 Step 即可。</p>
+ *
  * <p>Step 的两种提供方式：</p>
  * <ol>
  *   <li><b>内置 type</b>：YAML 中声明 {@code type: dataLoader} 等，由对应 StepFactory 按 config 创建；</li>

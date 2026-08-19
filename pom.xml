@@ -15,8 +15,6 @@
     <artifactId>usecase-framework</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>usecase-framework</name>
-    <description>配置驱动的用例编排框架（基于六边形架构改造）：聚合 POM —— framework-core 框架本体 + demo 演示应用</description>
 
     <modules>
         <module>framework-core</module>

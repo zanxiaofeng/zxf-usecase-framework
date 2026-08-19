@@ -1,6 +1,13 @@
-package com.example.myapp.framework.core;
+package com.example.myapp.framework.core.invoke;
+
+import lombok.RequiredArgsConstructor;
 
 import java.util.UUID;
+import java.util.function.Supplier;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.StepContextHolder;
+import com.example.myapp.framework.core.UseCase;
+import com.example.myapp.framework.core.UseCaseRegistry;
 
 /**
  * 子用例 Java 调用门面：业务代码（自定义 Step Bean、领域服务、定时任务、Controller……）
@@ -13,7 +20,7 @@ import java.util.UUID;
  *       否则退化为 {@link #invokeStandalone}；</li>
  *   <li>{@link #invokeIsolated} —— 隔离调用：子用例在全新 vars 中执行，biz <b>拷贝继承</b>
  *       （子可读父的 businessId/traceId，子的修改不回传）；</li>
- *   <li>{@link #invokeStandalone} —— 独立调用：全新上下文（空请求抽象），自动种子化 traceId，
+ *   <li>{@link #invokeStandalone} —— 独立调用：全新上下文（无入站请求），自动种子化 traceId，
  *       适用于管道外场景（调度任务、消息消费、普通 Service）。</li>
  * </ul>
  *
@@ -26,17 +33,14 @@ import java.util.UUID;
  * 被 registry 的创建过程触及（registry → ref step → client → invoker），若 invoker 直接持有
  * registry 会形成 Bean 创建循环；延迟解析（首次调用时解析并缓存）切断该循环。</p>
  */
+@RequiredArgsConstructor
 public final class UseCaseInvoker {
 
     /** biz 区中 traceId 的约定键名（与 framework.web.UseCaseRouterFactory 的 Web 入口契约一致） */
     private static final String TRACE_ID_KEY = "traceId";
 
-    private final java.util.function.Supplier<UseCaseRegistry> registrySupplier;
+    private final Supplier<UseCaseRegistry> registrySupplier;
     private volatile UseCaseRegistry registry;
-
-    public UseCaseInvoker(java.util.function.Supplier<UseCaseRegistry> registrySupplier) {
-        this.registrySupplier = registrySupplier;
-    }
 
     private UseCaseRegistry registry() {
         UseCaseRegistry current = registry;
@@ -80,16 +84,16 @@ public final class UseCaseInvoker {
     /** 在指定父上下文基础上的隔离调用：vars 全新，biz 拷贝继承（子的修改不回传）。 */
     public Object invokeIsolated(String useCaseId, Object input, StepContext parentContext) {
         UseCase target = registry().require(useCaseId);
-        StepContext childContext = new StepContext(parentContext.getRequest());
+        StepContext childContext = parentContext.newChildContext();
         childContext.getBiz().putAll(parentContext.getBiz());
         childContext.setPayload(input);
         return target.execute(childContext);
     }
 
-    /** 独立调用：全新上下文 + 空请求抽象，自动种子化 traceId（biz 区），管道外场景使用。 */
+    /** 独立调用：全新上下文（无入站请求），自动种子化 traceId（biz 区），管道外场景使用。 */
     public Object invokeStandalone(String useCaseId, Object input) {
         UseCase target = registry().require(useCaseId);
-        StepContext context = new StepContext(SimpleExchangeRequest.of("JAVA", "java-invoke"));
+        StepContext context = StepContext.standalone();
         context.putBiz(TRACE_ID_KEY, UUID.randomUUID().toString());
         context.setPayload(input);
         return target.execute(context);

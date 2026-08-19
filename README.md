@@ -32,7 +32,7 @@ route: GET /api/v1/users/{id} -> usecase [getUser] steps=[start, validateInput, 
 route: GET /api/v1/users/{id}/profile -> usecase [getUserProfile] steps=[start, loadUserBase, fetchCredit, checkCreditPass, logCredit, encodeUserId, userProfileTransformer, saveSnapshot]
 route: GET /api/v1/users/token/{token} -> usecase [getUserByToken] steps=[start, decodeToken, loadUserBase]
 route: GET /api/v1/users/{id}/greeting -> usecase [greetUser] steps=[start, GreetingStep]
-route: POST /api/v1/user-snapshots -> usecase [createUserSnapshot] steps=[start, validateBody, checkUserExists, logCreation, toSnapshot, saveSnapshot]
+route: POST /api/v1/user-snapshots -> usecase [createUserSnapshot] steps=[start, validateBody, checkUserExists, logCreation, toSnapshot, saveSnapshot, publishSnapshotCreated]
 ```
 
 ```bash
@@ -78,17 +78,18 @@ usecase:
 
 | type | 角色接口 | 职责 | 内置配置 |
 |------|---------|------|---------|
-| `starter` | Starter | 用例开始提取 businessId 等关键标识 → biz 关键数据区（+MDC） | `keys`（键→表达式 map） |
+| `starter` | Step | 用例开始提取 businessId 等关键标识 → biz 关键数据区（+MDC） | `keys`（键→表达式 map） |
 | `dataLoader` | DataLoader | 出端口读数据 → payload | `expression`, `as` |
 | `dataTransformer` | DataTransformer | payload → payload | `expression`, `as` |
 | `httpRequester` | HttpRequester | 调用外部 HTTP | `method/url/uriVariables/headers/body/auth/as` |
-| `logging` | Logging | 管道任意位置输出日志（不改数据） | `level`, `message`（#{} 模板） |
-| `encoder` | Encoder | 编码/摘要（base64/base64url/url/hex/md5/sha256） | `algorithm`, `source`, `as` |
-| `decoder` | Decoder | 解码（要求算法可逆，装配期校验） | `algorithm`, `source`, `as` |
+| `logging` | Step | 管道任意位置输出日志（不改数据） | `level`, `message`（#{} 模板） |
+| `encoder` | DataTransformer | 编码/摘要（base64/base64url/url/hex/md5/sha256；数据变换特例） | `algorithm`, `source`, `as` |
+| `decoder` | DataTransformer | 解码（要求算法可逆，装配期校验；数据变换特例） | `algorithm`, `source`, `as` |
 | `dataSaver` | DataSaver | payload → 出端口 | `expression`（返回 null 保留 payload）, `as` |
-| `validator` | Validator | 入口校验（schema / 函数式，二选一） | `expression` 或 `schema`, `target`, `message`, `errorCode` |
-| `usecase` | SubUseCase | 嵌入 shared 用例作为子用例 | `ref`=目标用例 id, `input`, `as`, `isolate` |
-| 自定义 | 实现 Step 的 Bean | 任意逻辑 | `ref: beanName` |
+| `validator` | Step | 入口校验（schema / 函数式，二选一） | `expression` 或 `schema`, `target`, `message`, `errorCode` |
+| `usecase` | Step | 嵌入 shared 用例作为子用例 | `ref`=目标用例 id, `input`, `as`, `isolate` |
+| `eventPublisher` | Step | 发布领域事件（活动事务内 afterCommit、提交后才外发，回滚不发布；无事务立即发布） | `event`（SpEL 构造事件，必填）, `publisher`（Bean 名，缺省取唯一实现） |
+| 自定义 | 命中主数据流语义时实现对应角色接口，否则实现 Step | 任意逻辑 | `ref: beanName` |
 
 ## starter 与关键数据区（biz）
 
@@ -278,12 +279,15 @@ usecase:
 2. **自定义 step 类型**：实现 `StepFactory`（`type()` 返回新类型名）注册为 Bean → YAML `type: myType`；
 3. **自定义认证**：实现 `AuthHandler` 注册为 Bean（同名 scheme 覆盖内置）；
 4. **自定义编解码算法**：实现 `Codec` 注册为 Bean，`algorithm()` 即算法名；
-5. **覆盖 RestClient**：定义名为 `useCaseRestClient` 的 Bean（自定义超时/拦截器/代理）。
+5. **事件发布**：实现 `EventPublisher` 注册为 Bean（Kafka / 事务性发件箱 / webhook……）；事务时机（afterCommit）由框架的 eventPublisher 步骤统一保障，实现方只管真实外发（建议幂等 + 自行重试）；
+6. **覆盖 RestClient**：定义名为 `useCaseRestClient` 的 Bean（自定义超时/拦截器/代理）；
+7. **替换任意内置 Bean**：自动配置的全部内置 Bean 均带 `@ConditionalOnMissingBean`——定义**同名 Bean**（如 `dataLoaderStepFactory`、`bearerTokenAuthHandler`）即整体替换内置实现；`StepExpressionEvaluator` / `UseCaseRegistry` / `UseCaseInvoker` 按**类型**判断（任意 Bean 名均可替换）；
+8. **非 Web 应用**：路由绑定仅 Servlet Web 环境装配（`@ConditionalOnWebApplication`）；非 Web 项目引入 framework-core 时管道装配（Registry / UseCaseInvoker / StepFactory）仍然可用，经 `UseCaseInvoker.invokeStandalone` 在管道外编程调用用例（无入站请求，上下文经 `StepContext.standalone()` 创建）。`usecase.definitions` 为空时应用正常启动（空路由，不绑定任何端点）。
 
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core（51）+ demo（12）两模块全量运行
+mvn test     # 根目录执行：framework-core + demo 两模块全量运行（73 个）
 ```
 
 - `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装（零容器）；
@@ -297,5 +301,6 @@ mvn test     # 根目录执行：framework-core（51）+ demo（12）两模块�
 - `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测；
 - `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义、父 payload 恢复、StepContextHolder 嵌套恢复；
 - `unit/framework/ClientCredentialsAuthHandlerTest`：OAuth2 token 缓存命中与过期原子刷新；
+- `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析；
 - `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
 - `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点。

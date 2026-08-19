@@ -2,10 +2,10 @@ package com.example.myapp.unit.framework;
 
 import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.assemble.UseCaseAssembler;
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.config.UseCaseDefinition;
+import com.example.myapp.framework.assemble.StepDefinition;
+import com.example.myapp.framework.assemble.UseCaseDefinition;
 import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SpelStepFactory;
@@ -28,7 +28,7 @@ class UseCaseAssemblerTest {
     private final StepExpressionEvaluator evaluator = new StepExpressionEvaluator(null);
     private final List<StepFactory> factories = List.of(
             new SpelStepFactory("dataLoader", SpelStepFactory.Role.LOADER, evaluator),
-            new SubUseCaseStepFactory(() -> null, evaluator));   // 装配期不触发 registry 解析
+            new SubUseCaseStepFactory(() -> null, evaluator));   // 装配期不触发 invoker 解析
 
     private UseCaseAssembler assembler() {
         return new UseCaseAssembler(new StaticListableBeanFactory(), factories);

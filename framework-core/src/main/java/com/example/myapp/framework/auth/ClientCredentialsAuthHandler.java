@@ -1,7 +1,8 @@
 package com.example.myapp.framework.auth;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -33,9 +34,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 同 key 并发请求只触发一次取牌，不同 key 之间互不阻塞。取牌失败异常传播
  * （映射函数抛错时缓存条目不变，下次请求重试）。</p>
  */
+@Slf4j
+@RequiredArgsConstructor
 public final class ClientCredentialsAuthHandler implements AuthHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(ClientCredentialsAuthHandler.class);
     private static final long EXPIRY_MARGIN_MILLIS = 60_000L;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
@@ -44,13 +46,9 @@ public final class ClientCredentialsAuthHandler implements AuthHandler {
     private final RestClient tokenClient;
     private final Map<String, CachedToken> tokenCache = new ConcurrentHashMap<>();
 
-    /** 默认客户端带超时；需自定义超时/拦截器时经 {@link #ClientCredentialsAuthHandler(RestClient)} 注入 */
+    /** 默认客户端带超时；需自定义超时/拦截器时经带参构造器注入（@RequiredArgsConstructor 生成） */
     public ClientCredentialsAuthHandler() {
         this(defaultTokenClient());
-    }
-
-    public ClientCredentialsAuthHandler(RestClient tokenClient) {
-        this.tokenClient = tokenClient;
     }
 
     private static RestClient defaultTokenClient() {
@@ -84,7 +82,6 @@ public final class ClientCredentialsAuthHandler implements AuthHandler {
                 cached == null || cached.expired() ? fetchToken(options) : cached).value();
     }
 
-    @SuppressWarnings("unchecked")
     private CachedToken fetchToken(Map<String, Object> options) {
         String tokenUrl = String.valueOf(options.get("tokenUrl"));
         String clientId = String.valueOf(options.get("clientId"));
@@ -105,7 +102,7 @@ public final class ClientCredentialsAuthHandler implements AuthHandler {
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(form)
                 .retrieve()
-                .body(Map.class);
+                .body(new ParameterizedTypeReference<Map<String, Object>>() { });
         if (response == null || response.get("access_token") == null) {
             throw new IllegalStateException("token endpoint returned no access_token");
         }

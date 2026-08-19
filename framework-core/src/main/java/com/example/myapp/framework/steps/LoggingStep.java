@@ -1,6 +1,6 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.core.Logging;
+import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import org.slf4j.Logger;
@@ -23,7 +23,7 @@ import java.util.Locale;
  * <p>日志 category 为 {@code usecase.step.<stepName>}，可按步骤名定向治理日志级别；
  * starter 写入的 MDC（biz.*）会随日志 pattern 自动携带。</p>
  */
-public final class LoggingStep implements Logging {
+public final class LoggingStep implements Step {
 
     public enum Level {
         DEBUG, INFO, WARN, ERROR

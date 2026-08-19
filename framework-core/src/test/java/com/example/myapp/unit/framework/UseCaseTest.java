@@ -3,11 +3,11 @@ package com.example.myapp.unit.framework;
 import com.example.myapp.framework.core.DataLoader;
 import com.example.myapp.framework.core.DataSaver;
 import com.example.myapp.framework.core.DataTransformer;
-import com.example.myapp.framework.core.EndpointSpec;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.core.UseCase.EndpointSpec;
+import org.springframework.http.HttpMethod;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.StepExecutionException;
+import com.example.myapp.framework.core.exception.StepExecutionException;
 import com.example.myapp.framework.core.UseCase;
 import org.junit.jupiter.api.Test;
 
@@ -32,9 +32,9 @@ class UseCaseTest {
         };
         DataSaver saver = context -> trace.add("save:" + context.getPayload(String.class));
 
-        UseCase useCase = new UseCase("uc1", "demo", new EndpointSpec("GET", "/x", 200),
+        UseCase useCase = new UseCase("uc1", "demo", new EndpointSpec(HttpMethod.GET, "/x", 200),
                 List.of(loader, transformer, saver));
-        StepContext context = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        StepContext context = StepContext.standalone();
 
         Object result = useCase.execute(context);
 
@@ -47,8 +47,8 @@ class UseCaseTest {
         Step boom = context -> {
             throw new IllegalStateException("boom");
         };
-        UseCase useCase = new UseCase("uc2", null, new EndpointSpec("GET", "/x", 200), List.of(boom));
-        StepContext context = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        UseCase useCase = new UseCase("uc2", null, new EndpointSpec(HttpMethod.GET, "/x", 200), List.of(boom));
+        StepContext context = StepContext.standalone();
 
         assertThatThrownBy(() -> useCase.execute(context))
                 .isInstanceOf(StepExecutionException.class)

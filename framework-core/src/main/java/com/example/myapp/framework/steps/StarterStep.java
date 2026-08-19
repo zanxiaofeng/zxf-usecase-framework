@@ -1,10 +1,10 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.core.Starter;
+import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
 import java.util.Map;
@@ -28,7 +28,9 @@ import java.util.regex.Pattern;
  * <p>每个键的解析规则同 {@link StepExpressionEvaluator#resolve}（字面量 / #{...} 模板 / SpEL）。
  * 解析结果非 null 时同步到 MDC（键名 {@code biz.<key>}），管道结束后由 Web 层统一清理。</p>
  */
-public final class StarterStep implements Starter {
+@Slf4j
+@RequiredArgsConstructor
+public final class StarterStep implements Step {
 
     /** MDC 键前缀，Web 层按此前缀清理 */
     public static final String MDC_PREFIX = "biz.";
@@ -36,17 +38,9 @@ public final class StarterStep implements Starter {
     /** MDC 值净化：剥离控制字符（换行/回车等），防止外部可控值（如 header）造成日志注入 */
     private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cc}");
 
-    private static final Logger log = LoggerFactory.getLogger(StarterStep.class);
-
     private final String name;
     private final Map<String, String> keyExpressions;
     private final StepExpressionEvaluator evaluator;
-
-    public StarterStep(String name, Map<String, String> keyExpressions, StepExpressionEvaluator evaluator) {
-        this.name = name;
-        this.keyExpressions = keyExpressions;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String name() {

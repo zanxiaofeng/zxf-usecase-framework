@@ -1,10 +1,14 @@
 package com.example.myapp.e2e;
 
+import com.example.myapp.domain.event.SnapshotCreatedEvent;
+import com.example.myapp.infrastructure.adapter.out.messaging.InMemoryEventPublisherAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.springframework.http.MediaType;
 
@@ -23,6 +27,9 @@ class UseCaseRouterE2eTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    @Autowired
+    InMemoryEventPublisherAdapter eventPublisher;
 
     @Test
     void getUser_returnsEnvelopeWithTraceId() throws Exception {
@@ -84,11 +91,27 @@ class UseCaseRouterE2eTest {
         mockMvc.perform(post("/api/v1/user-snapshots")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":\"u1\",\"name\":\"alice-snap\",\"tags\":[\"vip\"]}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("000000"))
                 .andExpect(jsonPath("$.data.snapshotId").isNotEmpty())
                 .andExpect(jsonPath("$.data.ownerName").value("Alice"))   // 子用例旁路结果参与组装
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    void createUserSnapshot_publishesDomainEventAfterSave() throws Exception {
+        // eventPublisher step：快照保存后发布 SnapshotCreatedEvent（经唯一 EventPublisher Bean 外发）
+        mockMvc.perform(post("/api/v1/user-snapshots")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":\"u1\",\"name\":\"alice-snap\"}"))
+                .andExpect(status().isCreated());
+
+        assertThat(eventPublisher.publishedEvents())
+                .singleElement()
+                .isInstanceOfSatisfying(SnapshotCreatedEvent.class, event -> {
+                    assertThat(event.snapshotId()).startsWith("snap-");
+                    assertThat(event.userId()).isEqualTo("u1");
+                });
     }
 
     @Test

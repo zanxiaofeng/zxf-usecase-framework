@@ -1,4 +1,4 @@
-package com.example.myapp.framework.core;
+package com.example.myapp.framework.core.invoke;
 
 /**
  * 子用例类型化 Java 客户端基类。业务方为每个 shared 用例声明一个客户端：

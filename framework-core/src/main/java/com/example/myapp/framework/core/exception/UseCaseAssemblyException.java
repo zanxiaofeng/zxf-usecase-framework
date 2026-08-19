@@ -1,4 +1,4 @@
-package com.example.myapp.framework.core;
+package com.example.myapp.framework.core.exception;
 
 /**
  * 用例装配失败（配置错误）：启动期抛出，fail-fast，不进入运行期。

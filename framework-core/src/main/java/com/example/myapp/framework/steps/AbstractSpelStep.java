@@ -3,6 +3,8 @@ package com.example.myapp.framework.steps;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /**
  * 基于 SpEL 表达式的通用 step 基类。
@@ -13,19 +15,13 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
  *   <li>未配置 {@code as} → 结果写入 payload；返回 null 时是否覆盖由子类 {@link #overwritePayloadWithNull()} 决定。</li>
  * </ul>
  */
+@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 abstract class AbstractSpelStep implements Step {
 
     private final String name;
     private final String expression;
     private final String as;
     protected final StepExpressionEvaluator evaluator;
-
-    protected AbstractSpelStep(String name, String expression, String as, StepExpressionEvaluator evaluator) {
-        this.name = name;
-        this.expression = expression;
-        this.as = as;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String name() {

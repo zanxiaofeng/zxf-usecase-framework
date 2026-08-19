@@ -3,9 +3,10 @@ package com.example.myapp.framework.steps;
 import com.example.myapp.framework.auth.AuthHandler;
 import com.example.myapp.framework.core.HttpRequester;
 import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.HttpStepException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestClient;
 
@@ -37,9 +38,9 @@ import java.util.Map;
  * <p>非 2xx 响应抛 {@link HttpStepException}；连接失败/超时由 RestClient 抛出
  * ResourceAccessException，传输层统一映射为 502。</p>
  */
+@Slf4j
+@RequiredArgsConstructor
 public final class HttpRequesterStep implements HttpRequester {
-
-    private static final Logger log = LoggerFactory.getLogger(HttpRequesterStep.class);
 
     private final String name;
     private final HttpMethod method;
@@ -53,25 +54,6 @@ public final class HttpRequesterStep implements HttpRequester {
     private final RestClient restClient;
     private final Map<String, AuthHandler> authHandlers;
     private final StepExpressionEvaluator evaluator;
-
-    public HttpRequesterStep(String name, HttpMethod method, String url,
-                             Map<String, Object> uriVariables, Map<String, Object> headers,
-                             String bodyExpression, String authScheme, Map<String, Object> authOptions,
-                             String as, RestClient restClient, Map<String, AuthHandler> authHandlers,
-                             StepExpressionEvaluator evaluator) {
-        this.name = name;
-        this.method = method;
-        this.url = url;
-        this.uriVariables = uriVariables;
-        this.headers = headers;
-        this.bodyExpression = bodyExpression;
-        this.authScheme = authScheme;
-        this.authOptions = authOptions;
-        this.as = as;
-        this.restClient = restClient;
-        this.authHandlers = authHandlers;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String name() {

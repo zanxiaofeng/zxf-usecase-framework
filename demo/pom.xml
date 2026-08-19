@@ -11,8 +11,6 @@
     </parent>
 
     <artifactId>usecase-framework-demo</artifactId>
-    <name>usecase-framework-demo</name>
-    <description>框架演示应用：六边形业务示例（用户 / 信用画像 / 快照）+ e2e 测试</description>
 
     <dependencies>
         <!-- 框架本体（传递引入 webmvc / restclient / json-schema-validator） -->
@@ -26,6 +24,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- Lombok：仅 application / infrastructure 层使用，domain 层零依赖（架构铁律） -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
 
         <!-- 测试（Spring Boot 4 起 MockMvc 自动配置拆分为独立测试模块） -->

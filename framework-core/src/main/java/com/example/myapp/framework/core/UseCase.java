@@ -1,9 +1,11 @@
 package com.example.myapp.framework.core;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 
 import java.util.List;
+import com.example.myapp.framework.core.exception.StepExecutionException;
 
 /**
  * 用例 = 端点 + 有序 step 管道。
@@ -12,30 +14,20 @@ import java.util.List;
  * 执行语义：顺序执行所有 step，任一步骤抛出 RuntimeException 即包装为
  * {@link StepExecutionException}（携带 useCaseId 与 stepName）后中断管道。
  */
+@Slf4j
+@RequiredArgsConstructor
 public final class UseCase {
-
-    private static final Logger log = LoggerFactory.getLogger(UseCase.class);
 
     private final String id;
     private final String description;
+    /** 端点描述；shared 用例为 null（不参与路由，仅作为子用例被内嵌调用） */
     private final EndpointSpec endpoint;
     private final List<Step> steps;
     private final boolean shared;
 
+    /** @param shared 缺省 false（endpoint 用例） */
     public UseCase(String id, String description, EndpointSpec endpoint, List<Step> steps) {
         this(id, description, endpoint, steps, false);
-    }
-
-    /**
-     * @param endpoint shared 用例可为 null（不参与路由）
-     * @param shared   是否共享用例（仅可被子用例 step 嵌入引用）
-     */
-    public UseCase(String id, String description, EndpointSpec endpoint, List<Step> steps, boolean shared) {
-        this.id = id;
-        this.description = description;
-        this.endpoint = endpoint;
-        this.steps = List.copyOf(steps);
-        this.shared = shared;
     }
 
     public boolean isShared() {
@@ -85,5 +77,15 @@ public final class UseCase {
 
     public List<Step> getSteps() {
         return steps;
+    }
+
+    /**
+     * 用例对外暴露的端点描述。
+     *
+     * @param method HTTP 方法（类型即合法性保证，装配期从配置字符串解析，非法值 fail-fast）
+     * @param path   URI 模板，支持 {@code {var}} 路径变量
+     * @param status 成功时返回的 HTTP 状态码（默认 200）
+     */
+    public record EndpointSpec(HttpMethod method, String path, int status) {
     }
 }

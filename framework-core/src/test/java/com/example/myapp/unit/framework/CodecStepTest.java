@@ -6,14 +6,15 @@ import com.example.myapp.framework.codec.Codec;
 import com.example.myapp.framework.codec.DigestCodec;
 import com.example.myapp.framework.codec.HexCodec;
 import com.example.myapp.framework.codec.UrlCodec;
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.steps.CodecStep;
 import com.example.myapp.framework.steps.CodecStepFactory;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -35,13 +36,13 @@ class CodecStepTest {
     private final StepExpressionEvaluator evaluator = new StepExpressionEvaluator(null);
 
     private final CodecStepFactory encoderFactory =
-            new CodecStepFactory("encoder", CodecStepFactory.Direction.ENCODE, codecs, evaluator);
+            new CodecStepFactory("encoder", CodecStep.Direction.ENCODE, codecs, evaluator);
     private final CodecStepFactory decoderFactory =
-            new CodecStepFactory("decoder", CodecStepFactory.Direction.DECODE, codecs, evaluator);
+            new CodecStepFactory("decoder", CodecStep.Direction.DECODE, codecs, evaluator);
 
     private StepContext contextWithPathId() {
-        return new StepContext(
-                SimpleExchangeRequest.withPathVariables("GET", "/users/{id}", Map.of("id", "u1")));
+        return StepContext.of(
+                TestServerRequests.getRequest(Map.of("id", "u1"), Map.of()), new ObjectMapper());
     }
 
     @Test

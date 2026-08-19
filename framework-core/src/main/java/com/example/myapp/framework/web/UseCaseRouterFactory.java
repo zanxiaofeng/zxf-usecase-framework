@@ -1,17 +1,16 @@
 package com.example.myapp.framework.web;
 
-import com.example.myapp.framework.core.EndpointSpec;
-import com.example.myapp.framework.core.ErrorCoded;
+import com.example.myapp.framework.core.UseCase.EndpointSpec;
+import com.example.myapp.framework.core.exception.ErrorCoded;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.StepExecutionException;
+import com.example.myapp.framework.core.exception.StepExecutionException;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
-import com.example.myapp.framework.steps.HttpStepException;
+import com.example.myapp.framework.core.exception.HttpStepException;
 import com.example.myapp.framework.steps.StarterStep;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.client.ResourceAccessException;
@@ -25,8 +24,8 @@ import org.springframework.web.servlet.function.ServerResponse;
 import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.Method;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -49,9 +48,9 @@ import java.util.regex.Pattern;
  *   <li>其余兜底 → 500 固定文案，绝不回显内部异常消息。</li>
  * </ul>
  */
+@Slf4j
+@RequiredArgsConstructor
 public final class UseCaseRouterFactory {
-
-    private static final Logger log = LoggerFactory.getLogger(UseCaseRouterFactory.class);
 
     /** biz 区中 traceId 的约定键名 */
     public static final String TRACE_ID_KEY = "traceId";
@@ -62,31 +61,34 @@ public final class UseCaseRouterFactory {
     private final Map<String, Integer> errorMappings;
     private final ObjectMapper objectMapper;
 
-    public UseCaseRouterFactory(Map<String, Integer> errorMappings, ObjectMapper objectMapper) {
-        this.errorMappings = errorMappings;
-        this.objectMapper = objectMapper;
-    }
-
     public RouterFunction<ServerResponse> build(UseCaseRegistry registry) {
         RouterFunctions.Builder builder = RouterFunctions.route();
+        boolean anyRoute = false;
         for (UseCase useCase : registry.all()) {
             if (useCase.isShared()) {
                 continue;   // shared 用例不绑定 endpoint，仅作为子用例被内嵌调用
             }
             builder.route(predicateFor(useCase.getEndpoint()), request -> invoke(useCase, request));
+            anyRoute = true;
+        }
+        if (!anyRoute) {
+            // 无 endpoint 用例（如引入 starter 尚未声明 usecase.definitions）：返回不匹配任何请求的
+            // 空路由保证应用可启动——RouterFunctions.Builder.build() 在零路由时会抛
+            // "No routes registered"，导致整个上下文启动失败
+            return request -> Optional.empty();
         }
         builder.onError(thrown -> true, (thrown, request) -> toErrorResponse(thrown, request));
         return builder.build();
     }
 
     private RequestPredicate predicateFor(EndpointSpec endpoint) {
-        return RequestPredicates.method(HttpMethod.valueOf(endpoint.method().toUpperCase(Locale.ROOT)))
+        return RequestPredicates.method(endpoint.method())
                 .and(RequestPredicates.path(endpoint.path()));
     }
 
     private ServerResponse invoke(UseCase useCase, ServerRequest request) {
-        StepContext context = new StepContext(new WebExchangeRequest(request, objectMapper));
-        seedTraceId(context);
+        StepContext context = StepContext.of(request, objectMapper);
+        seedTraceId(context, request);
         request.attributes().put(CONTEXT_ATTRIBUTE, context);
         try {
             Object payload = useCase.execute(context);
@@ -103,8 +105,8 @@ public final class UseCaseRouterFactory {
      * 防日志注入/响应头分裂，不合法即丢弃重新生成），否则生成 UUID。
      * 同步写入 MDC（键 {@code traceId}），供 logback pattern {@code %X{traceId}} 全链路关联。
      */
-    private void seedTraceId(StepContext context) {
-        String raw = context.getRequest().header("X-Request-Id");
+    private void seedTraceId(StepContext context, ServerRequest request) {
+        String raw = request.headers().firstHeader("X-Request-Id");
         String traceId = raw != null && TRACE_ID_PATTERN.matcher(raw).matches()
                 ? raw
                 : UUID.randomUUID().toString();
@@ -139,16 +141,16 @@ public final class UseCaseRouterFactory {
             traceId = traceIdOf(context);
         }
 
-        if (cause instanceof ErrorCoded || reflectiveErrorCode(cause) != null) {
+        String errorCode = cause instanceof ErrorCoded coded ? coded.getErrorCode() : reflectiveErrorCode(cause);
+        if (errorCode != null) {
             int status = resolveStatus(cause);
-            String code = cause instanceof ErrorCoded coded ? coded.getErrorCode() : reflectiveErrorCode(cause);
             String message = status >= 500 ? "Internal server error" : cause.getMessage();
             if (status >= 500) {
                 log.error("usecase failed", thrown);
             } else {
                 log.warn("usecase failed: {}", cause.getMessage());
             }
-            return json(status, ApiResponse.error(code, message, traceId));
+            return json(status, ApiResponse.error(errorCode, message, traceId));
         }
         if (cause instanceof HttpStepException
                 || cause instanceof RestClientResponseException

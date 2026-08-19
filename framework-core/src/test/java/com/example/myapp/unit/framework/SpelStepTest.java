@@ -1,6 +1,5 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.core.SimpleExchangeRequest;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SpelDataLoaderStep;
@@ -9,6 +8,7 @@ import com.example.myapp.framework.steps.SpelDataTransformerStep;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.StaticApplicationContext;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
@@ -37,8 +37,8 @@ class SpelStepTest {
     }
 
     private StepContext newContext() {
-        return new StepContext(
-                SimpleExchangeRequest.withPathVariables("GET", "/users/{id}", Map.of("id", "u1")));
+        return StepContext.of(
+                TestServerRequests.getRequest(Map.of("id", "u1"), Map.of()), new ObjectMapper());
     }
 
     @Test

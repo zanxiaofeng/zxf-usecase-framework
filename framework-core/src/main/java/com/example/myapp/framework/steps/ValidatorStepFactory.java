@@ -2,10 +2,10 @@ package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.assemble.StepConfig;
 import com.example.myapp.framework.assemble.StepFactory;
-import com.example.myapp.framework.config.StepDefinition;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.StepValidationException;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.StepValidationException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
@@ -13,6 +13,9 @@ import com.networknt.schema.SpecificationVersion;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -78,21 +81,24 @@ public final class ValidatorStepFactory implements StepFactory {
      * 索引 Map（{@code {0=userId, 1=name}}），这里把「键全为非负整数」的 Map 还原为 List。
      */
     private static Object normalizeConfigValue(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            if (!map.isEmpty()
-                    && map.keySet().stream().allMatch(key -> key instanceof String s && s.matches("\\d+"))) {
-                return map.entrySet().stream()
-                        .sorted(java.util.Comparator.comparingInt(e -> Integer.parseInt((String) e.getKey())))
-                        .map(e -> normalizeConfigValue(e.getValue()))
-                        .toList();
-            }
-            Map<String, Object> result = new java.util.LinkedHashMap<>();
-            map.forEach((k, v) -> result.put(String.valueOf(k), normalizeConfigValue(v)));
-            return result;
+        return switch (value) {
+            case Map<?, ?> map -> normalizeMap(map);
+            case List<?> list -> list.stream().map(ValidatorStepFactory::normalizeConfigValue).toList();
+            default -> value;
+        };
+    }
+
+    /** 键全为非负整数的 Map 还原为 List（按数值排序，修复 Boot 对开放 Map 的列表绑定失真），其余递归规范化 */
+    private static Object normalizeMap(Map<?, ?> map) {
+        if (!map.isEmpty()
+                && map.keySet().stream().allMatch(key -> key instanceof String s && s.matches("\\d+"))) {
+            return map.entrySet().stream()
+                    .sorted(Comparator.comparingInt(e -> Integer.parseInt((String) e.getKey())))
+                    .map(e -> normalizeConfigValue(e.getValue()))
+                    .toList();
         }
-        if (value instanceof java.util.List<?> list) {
-            return list.stream().map(ValidatorStepFactory::normalizeConfigValue).toList();
-        }
-        return value;
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((k, v) -> result.put(String.valueOf(k), normalizeConfigValue(v)));
+        return result;
     }
 }

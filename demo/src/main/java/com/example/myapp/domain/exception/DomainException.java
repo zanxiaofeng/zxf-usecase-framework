@@ -1,6 +1,6 @@
 package com.example.myapp.domain.exception;
 
-import com.example.myapp.framework.core.ErrorCoded;
+import com.example.myapp.framework.core.exception.ErrorCoded;
 
 /**
  * 类型化业务异常基类：携带稳定错误码（客户端契约）。

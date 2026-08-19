@@ -1,6 +1,5 @@
 package com.example.myapp.framework.assemble;
 
-import com.example.myapp.framework.config.StepDefinition;
 import com.example.myapp.framework.core.Step;
 
 /**

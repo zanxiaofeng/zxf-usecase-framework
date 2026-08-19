@@ -1,12 +1,11 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.core.AbstractUseCaseClient;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.core.invoke.AbstractUseCaseClient;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.StepContextHolder;
 import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.UseCaseInvoker;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -49,7 +48,7 @@ class UseCaseInvokerTest {
         UseCaseInvoker invoker = invokerWithChild();
 
         // 模拟父管道：执行期间 StepContextHolder 绑定父上下文
-        StepContext parent = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        StepContext parent = StepContext.standalone();
         parent.setPayload("P1");
         parent.putBiz("businessId", "u1");
         Object[] resultHolder = new Object[1];
@@ -69,7 +68,7 @@ class UseCaseInvokerTest {
     @Test
     void invokeIsolated_doesNotLeakVarsOrBiz() {
         UseCaseInvoker invoker = invokerWithChild();
-        StepContext parent = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        StepContext parent = StepContext.standalone();
         parent.setPayload("P1");
         parent.putBiz("businessId", "u1");
 
@@ -109,7 +108,7 @@ class UseCaseInvokerTest {
         UseCaseRegistry registry = new UseCaseRegistry(List.of(child));
         UseCaseInvoker invoker = new UseCaseInvoker(() -> registry);
 
-        StepContext parent = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        StepContext parent = StepContext.standalone();
         Step parentStep = context -> {
             invoker.invokeIsolated("childUc", "in", context);
             assertThat(StepContextHolder.current()).isSameAs(parent);   // 嵌套结束后恢复父

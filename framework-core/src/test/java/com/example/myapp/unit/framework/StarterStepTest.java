@@ -1,15 +1,15 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.StarterStepFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -43,8 +43,8 @@ class StarterStepTest {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("X-Tenant-Id", "t-42");
         headers.put("X-Channel", "mobile");
-        StepContext context = new StepContext(new SimpleExchangeRequest(
-                "GET", "/users/{id}", Map.of("id", "u1"), Map.of(), headers, null));
+        StepContext context = StepContext.of(
+                TestServerRequests.getRequest(Map.of("id", "u1"), headers), new ObjectMapper());
 
         step.execute(context);
 
@@ -76,8 +76,8 @@ class StarterStepTest {
 
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("X-Channel", "mobile\r\nFAKE-LOG");   // 外部可控值带控制字符（日志注入载荷）
-        StepContext context = new StepContext(
-                new SimpleExchangeRequest("GET", "/x", Map.of(), Map.of(), headers, null));
+        StepContext context = StepContext.of(
+                TestServerRequests.getRequest(Map.of(), headers), new ObjectMapper());
 
         step.execute(context);
 

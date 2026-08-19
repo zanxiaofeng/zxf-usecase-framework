@@ -1,12 +1,11 @@
 package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.SubUseCase;
-import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.Step;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.function.Supplier;
 
@@ -23,30 +22,25 @@ import java.util.function.Supplier;
  *     isolate: false               # 可选：true 时子用例 vars 隔离、biz 拷贝继承
  * }</pre>
  *
- * <p>registry 经 Supplier 延迟解析：step 创建发生在装配期，此时 registry 尚未就绪。</p>
+ * <p>执行统一委托 {@link UseCaseInvoker}——与 Java 代码调用子用例共享同一实现，两种入口的
+ * 上下文编排语义不会漂移：{@code isolate} → {@link UseCaseInvoker#invokeIsolated}；
+ * 其余 → {@link UseCaseInvoker#invoke}（共享上下文，父 payload 自动恢复）。结果统一经
+ * {@link StepResultStore} 落地：未配 {@code as} 时写回 payload（串联模式：子结果成为父
+ * payload），配置 {@code as} 时旁路到 {@code #vars}。</p>
+ *
+ * <p>invoker 经 Supplier 延迟解析：step 创建发生在装配期，此时 invoker 依赖的 registry 尚未就绪。</p>
  */
-public final class SubUseCaseStep implements SubUseCase {
-
-    private static final Logger log = LoggerFactory.getLogger(SubUseCaseStep.class);
+@Slf4j
+@RequiredArgsConstructor
+public final class SubUseCaseStep implements Step {
 
     private final String name;
     private final String useCaseId;
     private final String inputExpression;
     private final String as;
     private final boolean isolate;
-    private final Supplier<UseCaseRegistry> registrySupplier;
+    private final Supplier<UseCaseInvoker> invokerSupplier;
     private final StepExpressionEvaluator evaluator;
-
-    public SubUseCaseStep(String name, String useCaseId, String inputExpression, String as, boolean isolate,
-                          Supplier<UseCaseRegistry> registrySupplier, StepExpressionEvaluator evaluator) {
-        this.name = name;
-        this.useCaseId = useCaseId;
-        this.inputExpression = inputExpression;
-        this.as = as;
-        this.isolate = isolate;
-        this.registrySupplier = registrySupplier;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String name() {
@@ -55,28 +49,12 @@ public final class SubUseCaseStep implements SubUseCase {
 
     @Override
     public void execute(StepContext context) {
-        UseCase target = registrySupplier.get().require(useCaseId);
         Object input = evaluator.evaluate(inputExpression, context);
         log.debug("sub-usecase step [{}] invoking [{}] (isolate={})", name, useCaseId, isolate);
-
-        if (isolate) {
-            // 隔离模式：vars 全新（不污染父），biz 拷贝继承（子的修改不回传）
-            StepContext childContext = new StepContext(context.getRequest());
-            childContext.getBiz().putAll(context.getBiz());
-            childContext.setPayload(input);
-            Object result = target.execute(childContext);
-            StepResultStore.store(context, result, as, true);
-            return;
-        }
-
-        // 共享模式：vars / biz 与父共享同一实例；payload 按 as 规则处理
-        Object parentPayload = context.getPayload();
-        context.setPayload(input);
-        Object result = target.execute(context);
-        if (as != null) {
-            context.putVar(as, result);
-            context.setPayload(parentPayload);   // 恢复父 payload（旁路调用）
-        }
-        // 无 as：子用例结果自然成为父 payload（串联模式）
+        UseCaseInvoker invoker = invokerSupplier.get();
+        Object result = isolate
+                ? invoker.invokeIsolated(useCaseId, input, context)
+                : invoker.invoke(useCaseId, input, context);
+        StepResultStore.store(context, result, as, true);
     }
 }

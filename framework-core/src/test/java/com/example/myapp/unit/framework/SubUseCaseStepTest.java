@@ -1,10 +1,10 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.UseCase;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
@@ -36,14 +36,15 @@ class SubUseCaseStepTest {
     }
 
     private StepContext parentContext() {
-        StepContext context = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        StepContext context = StepContext.standalone();
         context.setPayload("P1");
         context.putBiz("businessId", "u1");
         return context;
     }
 
     private Step createStep(UseCaseRegistry registry, Map<String, Object> config) {
-        SubUseCaseStepFactory factory = new SubUseCaseStepFactory(() -> registry, evaluator);
+        UseCaseInvoker invoker = new UseCaseInvoker(() -> registry);
+        SubUseCaseStepFactory factory = new SubUseCaseStepFactory(() -> invoker, evaluator);
         return factory.create(new StepDefinition("sub", "usecase", "childUc", config));
     }
 

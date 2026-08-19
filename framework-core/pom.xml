@@ -27,11 +27,26 @@
             <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
 
+        <!-- 事务同步：eventPublisher step 的 afterCommit 发布时机保障（版本由 Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+
         <!-- Validator step：JSON Schema 校验（3.0.x 起基于 Jackson 3 / tools.jackson，与 Spring Boot 4 兼容） -->
         <dependency>
             <groupId>com.networknt</groupId>
             <artifactId>json-schema-validator</artifactId>
             <version>3.0.6</version>
+        </dependency>
+
+        <!-- Lombok：仅编译期（provided + SOURCE retention），发布 jar 无运行期依赖；
+             @Slf4j / @RequiredArgsConstructor / @UtilityClass 见 java-coding-standard §5.2 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
 
         <!-- 测试 -->

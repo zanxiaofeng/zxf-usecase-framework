@@ -3,11 +3,10 @@ package com.example.myapp.unit.framework;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.example.myapp.framework.config.StepDefinition;
-import com.example.myapp.framework.core.SimpleExchangeRequest;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.UseCaseAssemblyException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.LoggingStepFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -52,7 +51,7 @@ class LoggingStepTest {
         config.put("message", "用户 #{biz.businessId} 信用分: #{vars.credit.score}");
 
         Step step = factory.create(new StepDefinition("logCredit", "logging", null, config));
-        StepContext context = new StepContext(SimpleExchangeRequest.of("GET", "/x"));
+        StepContext context = StepContext.standalone();
         context.putBiz("businessId", "u1");
         context.putVar("credit", Map.of("score", 760));
 
@@ -73,7 +72,7 @@ class LoggingStepTest {
         config.put("message", "warn-message");
 
         Step step = factory.create(new StepDefinition("logCredit", "logging", null, config));
-        step.execute(new StepContext(SimpleExchangeRequest.of("GET", "/x")));
+        step.execute(StepContext.standalone());
 
         assertThat(appender.list.get(0).getLevel().toString()).isEqualTo("WARN");
     }

@@ -1,4 +1,4 @@
-package com.example.myapp.framework.steps;
+package com.example.myapp.framework.core.exception;
 
 /**
  * HttpRequester 步骤收到 4xx/5xx 下游响应时抛出，携带下游状态码与响应摘要。

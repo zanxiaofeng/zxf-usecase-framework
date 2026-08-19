@@ -2,27 +2,25 @@ package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.assemble.StepConfig;
 import com.example.myapp.framework.assemble.StepFactory;
-import com.example.myapp.framework.config.StepDefinition;
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import lombok.RequiredArgsConstructor;
 
 import java.util.function.Supplier;
 
 /**
  * usecase（子用例调用）步骤工厂。目标用例的存在性与循环引用由 UseCaseAssembler 在装配期统一校验。
+ * 执行委托 {@link UseCaseInvoker}（与其 Java 调用入口共享同一上下文编排实现）。
  */
+@RequiredArgsConstructor
 public final class SubUseCaseStepFactory implements StepFactory {
 
     public static final String TYPE = "usecase";
 
-    private final Supplier<UseCaseRegistry> registrySupplier;
+    private final Supplier<UseCaseInvoker> invokerSupplier;
     private final StepExpressionEvaluator evaluator;
-
-    public SubUseCaseStepFactory(Supplier<UseCaseRegistry> registrySupplier, StepExpressionEvaluator evaluator) {
-        this.registrySupplier = registrySupplier;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String type() {
@@ -37,6 +35,6 @@ public final class SubUseCaseStepFactory implements StepFactory {
         String as = config.optionalString("as");
         boolean isolate = Boolean.parseBoolean(config.stringOr("isolate", "false"));
         // ref（目标用例 id）的非空与存在性已由装配器校验
-        return new SubUseCaseStep(name, definition.ref(), input, as, isolate, registrySupplier, evaluator);
+        return new SubUseCaseStep(name, definition.ref(), input, as, isolate, invokerSupplier, evaluator);
     }
 }
