@@ -6,6 +6,7 @@ import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import lombok.RequiredArgsConstructor;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,13 +14,10 @@ import java.util.Map;
 /**
  * starter 步骤工厂。config.keys 必填且非空，值必须是字符串表达式。
  */
+@RequiredArgsConstructor
 public final class StarterStepFactory implements StepFactory {
 
     private final StepExpressionEvaluator evaluator;
-
-    public StarterStepFactory(StepExpressionEvaluator evaluator) {
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String type() {
@@ -28,21 +26,21 @@ public final class StarterStepFactory implements StepFactory {
 
     @Override
     public Step create(StepDefinition definition) {
+        String name = definition.nameOr("starter");
         StepConfig config = StepConfig.of(definition);
         Map<String, Object> keys = config.mapOrEmpty("keys");
         if (keys.isEmpty()) {
             throw new UseCaseAssemblyException(
-                    "step [%s]: config 'keys' is required and must not be empty".formatted(definition.nameOr("starter")));
+                    "step [%s]: config 'keys' is required and must not be empty".formatted(name));
         }
         Map<String, String> keyExpressions = new LinkedHashMap<>();
         keys.forEach((key, expression) -> {
             if (!(expression instanceof String text) || text.isBlank()) {
                 throw new UseCaseAssemblyException(
-                        "step [%s]: keys.%s must be a non-blank string expression"
-                                .formatted(definition.nameOr("starter"), key));
+                        "step [%s]: keys.%s must be a non-blank string expression".formatted(name, key));
             }
             keyExpressions.put(key, text);
         });
-        return new StarterStep(definition.nameOr("starter"), keyExpressions, evaluator);
+        return new StarterStep(name, keyExpressions, evaluator);
     }
 }

@@ -1,5 +1,8 @@
 package com.example.myapp.framework.core.invoke;
 
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+
 /**
  * 子用例类型化 Java 客户端基类。业务方为每个 shared 用例声明一个客户端：
  *
@@ -25,17 +28,12 @@ package com.example.myapp.framework.core.invoke;
  * @param <I> 子用例输入（初始 payload）类型
  * @param <O> 子用例结果（最终 payload）类型
  */
+@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class AbstractUseCaseClient<I, O> {
 
     private final UseCaseInvoker invoker;
     private final String useCaseId;
     private final Class<O> resultType;
-
-    protected AbstractUseCaseClient(UseCaseInvoker invoker, String useCaseId, Class<O> resultType) {
-        this.invoker = invoker;
-        this.useCaseId = useCaseId;
-        this.resultType = resultType;
-    }
 
     /** 目标用例 id（用于日志/排障） */
     protected String useCaseId() {

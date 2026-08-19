@@ -221,11 +221,11 @@ public class GreetingStep implements DataTransformer {
 - name: logCredit
   type: logging
   config:
-    level: INFO              # DEBUG/INFO/WARN/ERROR，缺省 INFO
+    level: INFO              # TRACE/DEBUG/INFO/WARN/ERROR，缺省 INFO
     message: "用户 #{biz.businessId} 信用分: #{vars.credit.score}"   # 缺省打印 payload
 ```
 
-日志 category 为 `usecase.step.<stepName>`，可按步骤名定向治理级别；配合 MDC 的 `biz.*` 实现全链路关联。
+日志 category 为 `usecase.<useCaseId>.step.<stepName>`，可按用例或步骤名定向治理级别；配合 MDC 的 `biz.*` 实现全链路关联。
 
 ## SpEL 求值上下文
 

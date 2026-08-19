@@ -4,7 +4,7 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.0
+**版本：** 3.1（2026-08-19 修订：§5.2 新增「构造器」小节——纯赋值构造器一律 `@RequiredArgsConstructor`）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
@@ -521,7 +521,7 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 | `@Data` | getter/setter/toString/equals/hashCode | **仅非 JPA 的 DTO/VO**。JPA Entity 用 `@Getter` + 手动 equals/hashCode |
 | `@Builder` | 建造者模式 | — |
 | `@Slf4j` | 自动创建 log 对象 | — |
-| `@RequiredArgsConstructor` | 构造器注入 | — |
+| `@RequiredArgsConstructor` | 构造器生成（Bean 注入及一切纯赋值构造器） | 见下方「构造器」小节 |
 | `@Value` | 不可变类 | 仅在需要继承或 `@Builder` 时使用（否则用 record） |
 | `@UtilityClass` | 工具类（全静态方法） | **所有工具类统一用此注解** |
 
@@ -529,6 +529,15 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
 - JPA 实体避免 `@Data`（循环依赖风险）；用 `@EqualsAndHashCode(onlyExplicitlyIncluded = true)` + `@EqualsAndHashCode.Include` 指定业务主键
 - `@ToString.Exclude` 排除敏感字段（密码、密钥等）
+
+#### 构造器（@RequiredArgsConstructor）
+
+**所有纯赋值构造器（无校验、无额外逻辑）必须使用 `@RequiredArgsConstructor` 替代手写，无论类是否 Spring Bean**——这是核心原则 §1.2「能用 1 行完成的代码绝不用 2 行」在构造器上的直接应用。
+
+**规则：**
+- 字段上的 `@Nullable` 等空值注解须经根目录 `lombok.config` 的 `lombok.copyableAnnotations` 复制到生成构造器的参数上——替换手写构造器前先确认该配置已覆盖所用注解，避免丢失参数级空值契约
+- Lombok 生成构造器**不受**其他手写构造器影响（与 `@Data` 隐含的构造器不同），手写与生成构造器只要签名不冲突即可共存——示例：带默认值的便利构造器（委托静态工厂计算默认依赖）手写成无参构造器，`@RequiredArgsConstructor` 同时生成全参构造器
+- 含实际逻辑的构造器（参数校验、防御性复制、默认值计算）仍需手写，不适用本条
 
 #### 工具类（@UtilityClass）
 
@@ -776,6 +785,7 @@ public void processOrder(Long orderId) {
 - [ ] 不可变集合是否正确选择（`List.of` vs `unmodifiableList` vs `copyOf`）？（§4.3）
 - [ ] 工具选择是否遵循优先级（JDK/Spring → Lombok → Commons）？（§5.1）
 - [ ] Lombok `@Data` 是否避开 JPA Entity？（§5.2）
+- [ ] 纯赋值构造器是否一律用 `@RequiredArgsConstructor`（非 Spring Bean 同适用）？（§5.2）
 - [ ] 异常链是否保留 cause？空 catch 是否存在？（§6.1）
 - [ ] 敏感数据是否脱敏？SQL 是否参数化？（§6.3）
 - [ ] 日期是否用 `OffsetDateTime`？（§7）

@@ -337,7 +337,7 @@ public class UseCaseFrameworkAutoConfiguration {
                     log.info("shared usecase [{}] steps={}", useCase.getId(), stepNames);
                 } else {
                     log.info("route: {} {} -> usecase [{}] steps={}",
-                            useCase.getEndpointMethod(), useCase.getEndpointPath(), useCase.getId(), stepNames);
+                            useCase.getEndpoint().method(), useCase.getEndpoint().path(), useCase.getId(), stepNames);
                 }
             }
         };

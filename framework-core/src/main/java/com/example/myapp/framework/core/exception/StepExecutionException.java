@@ -1,9 +1,12 @@
 package com.example.myapp.framework.core.exception;
 
+import lombok.Getter;
+
 /**
  * 步骤执行失败：携带 useCaseId 与 stepName，cause 为原始异常（领域异常、下游调用异常等）。
  * 传输层沿 cause 链还原原始异常做状态码映射。
  */
+@Getter
 public class StepExecutionException extends RuntimeException {
 
     private final String useCaseId;
@@ -14,13 +17,5 @@ public class StepExecutionException extends RuntimeException {
                 .formatted(useCaseId, stepName, cause == null ? null : cause.getMessage()), cause);
         this.useCaseId = useCaseId;
         this.stepName = stepName;
-    }
-
-    public String getUseCaseId() {
-        return useCaseId;
-    }
-
-    public String getStepName() {
-        return stepName;
     }
 }

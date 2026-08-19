@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * logging 步骤：消息模板解析、级别路由、按步骤名的 logger category、非法级别装配期报错。
+ * logging 步骤：消息模板解析、级别路由、按用例+步骤名的 logger category、非法级别装配期报错。
  */
 class LoggingStepTest {
 
@@ -33,7 +33,7 @@ class LoggingStepTest {
 
     @BeforeEach
     void attachAppender() {
-        stepLogger = (Logger) LoggerFactory.getLogger("usecase.step.logCredit");
+        stepLogger = (Logger) LoggerFactory.getLogger("usecase.testUc.step.logCredit");
         appender = new ListAppender<>();
         appender.start();
         stepLogger.addAppender(appender);
@@ -50,7 +50,8 @@ class LoggingStepTest {
         config.put("level", "INFO");
         config.put("message", "用户 #{biz.businessId} 信用分: #{vars.credit.score}");
 
-        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config));
+        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config)
+                .withUseCaseId("testUc"));
         StepContext context = StepContext.standalone();
         context.putBiz("businessId", "u1");
         context.putVar("credit", Map.of("score", 760));
@@ -71,7 +72,8 @@ class LoggingStepTest {
         config.put("level", "warn");
         config.put("message", "warn-message");
 
-        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config));
+        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config)
+                .withUseCaseId("testUc"));
         step.execute(StepContext.standalone());
 
         assertThat(appender.list.get(0).getLevel().toString()).isEqualTo("WARN");
@@ -80,7 +82,7 @@ class LoggingStepTest {
     @Test
     void invalidLevelFailsFastAtAssembly() {
         assertThatThrownBy(() -> factory.create(new StepDefinition(
-                "logCredit", "logging", null, Map.of("level", "verbose"))))
+                "logCredit", "logging", null, Map.of("level", "verbose")).withUseCaseId("testUc")))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("invalid logging level");
     }

@@ -33,7 +33,7 @@ class UseCaseTest {
         DataSaver saver = context -> trace.add("save:" + context.getPayload(String.class));
 
         UseCase useCase = new UseCase("uc1", "demo", new EndpointSpec(HttpMethod.GET, "/x", 200),
-                List.of(loader, transformer, saver));
+                List.of(loader, transformer, saver), false);
         StepContext context = StepContext.standalone();
 
         Object result = useCase.execute(context);
@@ -47,7 +47,7 @@ class UseCaseTest {
         Step boom = context -> {
             throw new IllegalStateException("boom");
         };
-        UseCase useCase = new UseCase("uc2", null, new EndpointSpec(HttpMethod.GET, "/x", 200), List.of(boom));
+        UseCase useCase = new UseCase("uc2", null, new EndpointSpec(HttpMethod.GET, "/x", 200), List.of(boom), false);
         StepContext context = StepContext.standalone();
 
         assertThatThrownBy(() -> useCase.execute(context))

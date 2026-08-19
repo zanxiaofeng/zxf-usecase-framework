@@ -1,5 +1,6 @@
 package com.example.myapp.framework.auth;
 
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.http.HttpHeaders;
@@ -15,15 +16,15 @@ import java.util.Map;
  * # 动态令牌（引用 TokenProvider Bean，每次请求取最新）
  * auth: { scheme: bearer, options: { tokenProvider: creditTokenProvider } }
  * }</pre>
+ *
+ * <p>{@code beanFactory} 允许为 null（独立使用时无 Spring 容器），
+ * 此时仅支持静态 {@code token} 方式。</p>
  */
+@RequiredArgsConstructor
 public final class BearerTokenAuthHandler implements AuthHandler {
 
     @Nullable
     private final BeanFactory beanFactory;
-
-    public BearerTokenAuthHandler(@Nullable BeanFactory beanFactory) {
-        this.beanFactory = beanFactory;
-    }
 
     @Override
     public String scheme() {

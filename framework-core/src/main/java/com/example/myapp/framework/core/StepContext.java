@@ -1,6 +1,8 @@
 package com.example.myapp.framework.core;
 
 import com.example.myapp.framework.core.exception.StepValidationException;
+import lombok.Getter;
+import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.ServerRequest;
@@ -25,10 +27,16 @@ import java.util.Map;
  */
 public final class StepContext {
 
+    /** 入站请求；{@link #standalone()} 场景为 null */
+    @Getter
     private final @Nullable ServerRequest request;
     private final @Nullable ObjectMapper objectMapper;
+    @Getter
+    @Setter
     private Object payload;
+    @Getter
     private final Map<String, Object> vars = new LinkedHashMap<>();
+    @Getter
     private final Map<String, Object> biz = new LinkedHashMap<>();
     private boolean bodyRead;
     private @Nullable Object body;
@@ -57,11 +65,6 @@ public final class StepContext {
         child.bodyRead = this.bodyRead;
         child.body = this.body;
         return child;
-    }
-
-    /** 入站请求；{@link #standalone()} 场景为 null。 */
-    public @Nullable ServerRequest getRequest() {
-        return request;
     }
 
     // ------------------------------------------------------------------
@@ -135,21 +138,9 @@ public final class StepContext {
                 || contentType.getSubtype().endsWith("+json");
     }
 
-    public Object getPayload() {
-        return payload;
-    }
-
-    public void setPayload(Object payload) {
-        this.payload = payload;
-    }
-
     /** 类型化读取：类型不符时立即抛 ClassCastException（而非延迟到调用点） */
     public <T> T getPayload(Class<T> type) {
         return type.cast(payload);
-    }
-
-    public Map<String, Object> getVars() {
-        return vars;
     }
 
     public void putVar(String name, Object value) {
@@ -167,10 +158,6 @@ public final class StepContext {
     // ------------------------------------------------------------------
     // 关键数据区（biz）：starter step 写入，SpEL 经 #biz.xxx / 模板经 #{biz.xxx} 引用
     // ------------------------------------------------------------------
-
-    public Map<String, Object> getBiz() {
-        return biz;
-    }
 
     public void putBiz(String key, Object value) {
         biz.put(key, value);

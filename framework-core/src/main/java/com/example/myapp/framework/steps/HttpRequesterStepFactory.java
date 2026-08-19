@@ -7,6 +7,7 @@ import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestClient;
 
@@ -16,18 +17,12 @@ import java.util.Map;
 /**
  * httpRequester 类型步骤的工厂：解析 config，装配期校验 auth scheme 是否存在（fail-fast）。
  */
+@RequiredArgsConstructor
 public final class HttpRequesterStepFactory implements StepFactory {
 
     private final RestClient restClient;
     private final Map<String, AuthHandler> authHandlers;
     private final StepExpressionEvaluator evaluator;
-
-    public HttpRequesterStepFactory(RestClient restClient, Map<String, AuthHandler> authHandlers,
-                                    StepExpressionEvaluator evaluator) {
-        this.restClient = restClient;
-        this.authHandlers = authHandlers;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String type() {

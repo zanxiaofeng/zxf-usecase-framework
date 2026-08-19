@@ -6,17 +6,20 @@ import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
+
+import java.util.Locale;
 
 /**
- * logging 步骤工厂。
+ * logging 步骤工厂。按 {@code usecase.<useCaseId>.step.<stepName>} 约定创建步骤 logger（category 契约见 {@link LoggingStep}）。
  */
+@RequiredArgsConstructor
 public final class LoggingStepFactory implements StepFactory {
 
     private final StepExpressionEvaluator evaluator;
-
-    public LoggingStepFactory(StepExpressionEvaluator evaluator) {
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String type() {
@@ -27,13 +30,17 @@ public final class LoggingStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         StepConfig config = StepConfig.of(definition);
         String name = definition.nameOr("logging");
-        LoggingStep.Level level;
+        String raw = config.stringOr("level", "INFO");
+        Level level;
         try {
-            level = LoggingStep.parseLevel(config.stringOr("level", "INFO"), name);
+            level = Level.valueOf(raw.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new UseCaseAssemblyException(e.getMessage(), e);
+            throw new UseCaseAssemblyException(
+                    "step [%s]: invalid logging level '%s', expected TRACE/DEBUG/INFO/WARN/ERROR"
+                            .formatted(name, raw), e);
         }
         String message = config.optionalString("message");
-        return new LoggingStep(name, message, level, evaluator);
+        Logger log = LoggerFactory.getLogger("usecase." + definition.useCaseId() + ".step." + name);
+        return new LoggingStep(name, message, level, evaluator, log);
     }
 }

@@ -206,7 +206,7 @@ public final class UseCaseAssembler {
                             .formatted(useCaseId, index, definition.type(), factories.keySet()));
         }
         try {
-            return factory.create(definition);
+            return factory.create(definition.withUseCaseId(useCaseId));
         } catch (UseCaseAssemblyException e) {
             throw new UseCaseAssemblyException(
                     "usecase [%s] step #%d (%s): %s".formatted(useCaseId, index, definition.type(), e.getMessage()), e);

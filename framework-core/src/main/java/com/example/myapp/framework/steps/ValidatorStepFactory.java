@@ -10,6 +10,7 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
+import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -25,6 +26,7 @@ import java.util.Map;
  * <p>底层使用 networknt json-schema-validator 3.x（基于 Jackson 3，与 Spring Boot 4 兼容），
  * 缺省方言为 JSON Schema 2020-12。</p>
  */
+@RequiredArgsConstructor
 public final class ValidatorStepFactory implements StepFactory {
 
     public static final String TYPE = "validator";
@@ -35,11 +37,6 @@ public final class ValidatorStepFactory implements StepFactory {
 
     private final StepExpressionEvaluator evaluator;
     private final ObjectMapper objectMapper;
-
-    public ValidatorStepFactory(StepExpressionEvaluator evaluator, ObjectMapper objectMapper) {
-        this.evaluator = evaluator;
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     public String type() {

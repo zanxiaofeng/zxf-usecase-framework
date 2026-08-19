@@ -5,10 +5,12 @@ import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import lombok.RequiredArgsConstructor;
 
 /**
  * SpEL 三件套（dataLoader / dataTransformer / dataSaver）共用的工厂，按角色区分实例。
  */
+@RequiredArgsConstructor
 public final class SpelStepFactory implements StepFactory {
 
     public enum Role {
@@ -18,12 +20,6 @@ public final class SpelStepFactory implements StepFactory {
     private final String type;
     private final Role role;
     private final StepExpressionEvaluator evaluator;
-
-    public SpelStepFactory(String type, Role role, StepExpressionEvaluator evaluator) {
-        this.type = type;
-        this.role = role;
-        this.evaluator = evaluator;
-    }
 
     @Override
     public String type() {

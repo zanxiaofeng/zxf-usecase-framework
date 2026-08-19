@@ -1,21 +1,19 @@
 package com.example.myapp.framework.assemble;
 
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 import java.util.Map;
 
 /**
  * step config Map 的类型化读取器：统一的必填校验与错误信息（携带 step 名）。
  */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class StepConfig {
 
     private final Map<String, Object> config;
     private final String label;
-
-    private StepConfig(Map<String, Object> config, String label) {
-        this.config = config;
-        this.label = label;
-    }
 
     public static StepConfig of(StepDefinition definition) {
         return new StepConfig(definition.configOrEmpty(), definition.nameOr(String.valueOf(definition.type())));

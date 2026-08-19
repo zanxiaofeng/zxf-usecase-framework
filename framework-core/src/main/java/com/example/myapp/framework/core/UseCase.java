@@ -1,5 +1,6 @@
 package com.example.myapp.framework.core;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
@@ -15,6 +16,7 @@ import com.example.myapp.framework.core.exception.StepExecutionException;
  * {@link StepExecutionException}（携带 useCaseId 与 stepName）后中断管道。
  */
 @Slf4j
+@Getter
 @RequiredArgsConstructor
 public final class UseCase {
 
@@ -24,15 +26,6 @@ public final class UseCase {
     private final EndpointSpec endpoint;
     private final List<Step> steps;
     private final boolean shared;
-
-    /** @param shared 缺省 false（endpoint 用例） */
-    public UseCase(String id, String description, EndpointSpec endpoint, List<Step> steps) {
-        this(id, description, endpoint, steps, false);
-    }
-
-    public boolean isShared() {
-        return shared;
-    }
 
     /**
      * 依次执行管道内所有 step，返回最终 payload。
@@ -61,22 +54,6 @@ public final class UseCase {
         } finally {
             StepContextHolder.restore(previous);
         }
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public EndpointSpec getEndpoint() {
-        return endpoint;
-    }
-
-    public List<Step> getSteps() {
-        return steps;
     }
 
     /**

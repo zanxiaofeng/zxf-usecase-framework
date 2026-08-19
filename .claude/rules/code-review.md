@@ -27,6 +27,7 @@ paths:
 - [ ] 大括号是否始终使用？`@Override` 是否标注？
 - [ ] 工具选择是否遵循优先级（JDK/Spring → Lombok → Commons）？
 - [ ] Lombok `@Data` 是否避开 JPA Entity？
+- [ ] 纯赋值构造器是否一律用 `@RequiredArgsConstructor`（非 Spring Bean 同适用，见 java-coding-standard.md §5.2）？
 - [ ] 异常链是否保留 cause？
 
 ### 对象健身操（→ `java-object-calisthenics.md`）

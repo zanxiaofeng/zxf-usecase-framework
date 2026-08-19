@@ -46,7 +46,7 @@ paths:
 
 ## Core Dependencies（核心依赖）
 
-- Lombok（boilerplate reduction：`@Data`、`@Builder`、`@Slf4j`、`@RequiredArgsConstructor`；**仅 application 与 infrastructure 层使用，domain 层零依赖**）
+- Lombok（boilerplate reduction：`@Data`、`@Builder`、`@Slf4j`、`@RequiredArgsConstructor`、`@Getter`；provided + optional 仅编译期依赖，各层均可使用——含 domain 层，2026-08-19 起放宽原「domain 层零依赖不含 Lombok」的限制）
 - Apache Commons Lang 3（`StringUtils`、`ObjectUtils`）
 - Flyway（SB4 需专用 starter `spring-boot-starter-flyway`；版本由 Spring Boot BOM 管理）
 - Spring Data JPA（Hibernate 7）

@@ -57,7 +57,7 @@ class UseCaseInvokerTest {
             resultHolder[0] = invoker.invoke("childUc", context.getBiz("businessId"));
             assertThat(StepContextHolder.current()).isSameAs(parent);
         };
-        new UseCase("parentUc", null, null, List.of(parentStep)).execute(parent);
+        new UseCase("parentUc", null, null, List.of(parentStep), false).execute(parent);
 
         assertThat(resultHolder[0]).isEqualTo("u1-child");        // 子结果经返回值返回
         assertThat(parent.getPayload()).isEqualTo("P1");          // Java 调用是函数式取值：父 payload 恢复
@@ -74,7 +74,7 @@ class UseCaseInvokerTest {
 
         Object[] resultHolder = new Object[1];
         Step parentStep = context -> resultHolder[0] = invoker.invokeIsolated("childUc", context.getBiz("businessId"));
-        new UseCase("parentUc", null, null, List.of(parentStep)).execute(parent);
+        new UseCase("parentUc", null, null, List.of(parentStep), false).execute(parent);
 
         assertThat(resultHolder[0]).isEqualTo("u1-child");        // biz 拷贝继承：子可读父的 businessId
         assertThat(parent.getPayload()).isEqualTo("P1");
@@ -113,7 +113,7 @@ class UseCaseInvokerTest {
             invoker.invokeIsolated("childUc", "in", context);
             assertThat(StepContextHolder.current()).isSameAs(parent);   // 嵌套结束后恢复父
         };
-        new UseCase("parentUc", null, null, List.of(parentStep)).execute(parent);
+        new UseCase("parentUc", null, null, List.of(parentStep), false).execute(parent);
 
         assertThat(StepContextHolder.current()).isNull();               // 父管道结束后清空
     }
