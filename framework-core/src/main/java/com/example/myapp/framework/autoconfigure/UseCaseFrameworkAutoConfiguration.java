@@ -335,10 +335,10 @@ public class UseCaseFrameworkAutoConfiguration {
                 List<String> stepNames = useCase.getSteps().stream().map(step -> step.name()).toList();
                 if (useCase.isShared()) {
                     log.info("shared usecase [{}] steps={}", useCase.getId(), stepNames);
-                } else {
-                    log.info("route: {} {} -> usecase [{}] steps={}",
-                            useCase.getEndpoint().method(), useCase.getEndpoint().path(), useCase.getId(), stepNames);
+                    continue;
                 }
+                log.info("route: {} {} -> usecase [{}] steps={}",
+                        useCase.getEndpoint().method(), useCase.getEndpoint().path(), useCase.getId(), stepNames);
             }
         };
     }

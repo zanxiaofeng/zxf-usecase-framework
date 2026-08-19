@@ -85,7 +85,7 @@ public final class UseCaseInvoker {
     public Object invokeIsolated(String useCaseId, Object input, StepContext parentContext) {
         UseCase target = registry().require(useCaseId);
         StepContext childContext = parentContext.newChildContext();
-        childContext.getBiz().putAll(parentContext.getBiz());
+        childContext.inheritBizFrom(parentContext);
         childContext.setPayload(input);
         return target.execute(childContext);
     }

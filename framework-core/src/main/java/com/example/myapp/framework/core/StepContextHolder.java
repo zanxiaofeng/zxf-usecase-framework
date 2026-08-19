@@ -33,8 +33,8 @@ public class StepContextHolder {
     void restore(StepContext previous) {
         if (previous == null) {
             CURRENT.remove();
-        } else {
-            CURRENT.set(previous);
+            return;
         }
+        CURRENT.set(previous);
     }
 }

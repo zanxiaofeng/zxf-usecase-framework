@@ -67,6 +67,11 @@ public final class StepContext {
         return child;
     }
 
+    /** 从父上下文拷贝继承 biz 关键数据区（隔离子用例调用用；拷贝后子的修改不回传父） */
+    public void inheritBizFrom(StepContext parent) {
+        biz.putAll(parent.biz);
+    }
+
     // ------------------------------------------------------------------
     // 便捷访问器：SpEL 模板表达式（#{path.id} / #{vars.x} / #{body.name}）以 StepContext 为根对象；
     // 同时供 StepExpressionEvaluator 注册 #path / #query / #headers / #body 变量

@@ -1,6 +1,5 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.auth.AuthHandler;
 import com.example.myapp.framework.core.HttpRequester;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.exception.HttpStepException;
@@ -48,11 +47,9 @@ public final class HttpRequesterStep implements HttpRequester {
     private final Map<String, Object> uriVariables;
     private final Map<String, Object> headers;
     private final String bodyExpression;
-    private final String authScheme;
-    private final Map<String, Object> authOptions;
+    private final AuthSpec authSpec;
     private final String as;
     private final RestClient restClient;
-    private final Map<String, AuthHandler> authHandlers;
     private final StepExpressionEvaluator evaluator;
 
     @Override
@@ -69,7 +66,7 @@ public final class HttpRequesterStep implements HttpRequester {
                 request.header(key, String.valueOf(value));
             }
         });
-        applyAuth(request);
+        authSpec.apply(request);
         if (bodyExpression != null) {
             request.body(evaluator.evaluate(bodyExpression, context));
         }
@@ -87,23 +84,7 @@ public final class HttpRequesterStep implements HttpRequester {
             }
             return responseBody;
         });
-        if (as != null) {
-            context.putVar(as, result);
-        } else {
-            context.setPayload(result);
-        }
-    }
-
-    private void applyAuth(RestClient.RequestBodySpec request) {
-        if (authScheme == null || authScheme.isBlank() || "none".equalsIgnoreCase(authScheme)) {
-            return;
-        }
-        AuthHandler handler = authHandlers.get(authScheme);
-        if (handler == null) {
-            // 工厂装配期已校验，这里兜底防御
-            throw new IllegalStateException("no AuthHandler for scheme: " + authScheme);
-        }
-        handler.apply(request, authOptions);
+        StepResultStore.store(context, result, as, true);
     }
 
     private Map<String, Object> resolveMap(Map<String, Object> source, StepContext context) {

@@ -67,6 +67,6 @@ public final class HttpRequesterStepFactory implements StepFactory {
         }
 
         return new HttpRequesterStep(name, method, url, uriVariables, headers, bodyExpression,
-                authScheme, authOptions, as, restClient, authHandlers, evaluator);
+                new AuthSpec(authScheme, authOptions, authHandlers), as, restClient, evaluator);
     }
 }

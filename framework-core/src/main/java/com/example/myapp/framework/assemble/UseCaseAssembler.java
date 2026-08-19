@@ -81,7 +81,7 @@ public final class UseCaseAssembler {
                     ? null
                     : new EndpointSpec(HttpMethod.valueOf(endpoint.method().toUpperCase(Locale.ROOT)),
                             endpoint.path(), endpoint.statusOrDefault());
-            assembled.add(new UseCase(definition.id(), definition.description(), endpointSpec, steps,
+            assembled.add(new UseCase(definition.id(), definition.description(), endpointSpec, List.copyOf(steps),
                     definition.isShared()));
         }
         UseCaseRegistry registry = new UseCaseRegistry(assembled);
