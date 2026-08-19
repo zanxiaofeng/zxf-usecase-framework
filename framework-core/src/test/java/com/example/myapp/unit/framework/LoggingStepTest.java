@@ -81,6 +81,45 @@ class LoggingStepTest {
     }
 
     @Test
+    void logContextDumpsPipelineStateAtDebug() {
+        // logContext 的 DEBUG 输出走步骤 category，须先放开该 logger 的级别
+        stepLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("message", "checkpoint");
+        config.put("logContext", true);
+
+        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config)
+                .withUseCaseId("testUc"));
+        StepContext context = StepContext.standalone();
+        context.setPayload(Map.of("id", "u1"));
+        context.putVar("credit", Map.of("score", 760));
+        context.putBiz("businessId", "u1");
+
+        step.execute(context);
+
+        assertThat(appender.list).hasSize(2);
+        assertThat(appender.list.get(0).getFormattedMessage()).isEqualTo("checkpoint");
+        ILoggingEvent contextEvent = appender.list.get(1);
+        assertThat(contextEvent.getLevel().toString()).isEqualTo("DEBUG");
+        assertThat(contextEvent.getFormattedMessage())
+                .contains("payload={id=u1}")
+                .contains("vars={credit={score=760}}")
+                .contains("biz={businessId=u1}");
+    }
+
+    @Test
+    void logContextDefaultsToFalse() {
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("message", "checkpoint");
+
+        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config)
+                .withUseCaseId("testUc"));
+        step.execute(StepContext.standalone());
+
+        assertThat(appender.list).hasSize(1);
+    }
+
+    @Test
     void invalidLevelFailsFastAtAssembly() {
         assertThatThrownBy(() -> factory.create(new StepDefinition(
                 "logCredit", "logging", null, Map.of("level", "verbose")).withUseCaseId("testUc")))

@@ -230,6 +230,10 @@ usecase:
           type: dataTransformer      # 由请求体 + 子用例旁路结果组装快照（SpEL inline map）
           config:
             expression: "{userId: #body.userId, name: #body.name, tags: #body.tags, ownerName: #vars.userDto.name}"
+        - name: afterToSnapshot
+          type: logging
+          config:
+            logContext: true
         - name: saveSnapshot
           type: dataSaver
           config:
@@ -239,3 +243,7 @@ usecase:
           config:
             event: "T(com.example.myapp.domain.event.SnapshotCreatedEvent).of(#payload.snapshotId, #body.userId)"
             # publisher: 缺省取容器中唯一的 EventPublisher（demo 为 InMemoryEventPublisherAdapter）
+
+logging:
+  level:
+    usecase: DEBUG

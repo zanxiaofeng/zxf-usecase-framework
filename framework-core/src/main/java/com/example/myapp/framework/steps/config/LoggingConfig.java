@@ -18,4 +18,7 @@ public class LoggingConfig {
 
     /** 消息模板（{@code #{...}} 占位）；缺省输出默认格式 */
     private String message;
+
+    /** true 时额外以 DEBUG 输出上下文全部内容（payload / vars / biz），缺省 false */
+    private boolean logContext;
 }

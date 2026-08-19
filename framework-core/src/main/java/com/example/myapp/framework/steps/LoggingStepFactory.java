@@ -30,6 +30,6 @@ public final class LoggingStepFactory implements StepFactory {
         LoggingConfig config = StepConfigs.bind(definition, LoggingConfig.class);
         String name = definition.nameOr("logging");
         Logger log = LoggerFactory.getLogger("usecase." + definition.useCaseId() + ".step." + name);
-        return new LoggingStep(name, config.getMessage(), config.getLevel(), evaluator, log);
+        return new LoggingStep(name, config.getMessage(), config.getLevel(), config.isLogContext(), evaluator, log);
     }
 }
