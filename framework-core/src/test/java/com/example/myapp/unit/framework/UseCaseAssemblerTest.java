@@ -1,21 +1,22 @@
 package com.example.myapp.unit.framework;
 
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+
+import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.assemble.UseCaseAssembler;
-import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.assemble.UseCaseDefinition;
 import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SpelStepFactory;
 import com.example.myapp.framework.steps.SubUseCaseStep;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.support.StaticListableBeanFactory;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

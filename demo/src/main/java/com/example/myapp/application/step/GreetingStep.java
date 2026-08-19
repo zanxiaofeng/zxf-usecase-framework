@@ -1,15 +1,16 @@
 package com.example.myapp.application.step;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
 import com.example.myapp.application.client.UserBaseClient;
 import com.example.myapp.application.dto.UserDto;
 import com.example.myapp.framework.core.DataTransformer;
 import com.example.myapp.framework.core.StepContext;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
 
 /**
  * 演示「Java 代码内调用 shared 子用例」：自定义 Step Bean 注入类型化客户端，

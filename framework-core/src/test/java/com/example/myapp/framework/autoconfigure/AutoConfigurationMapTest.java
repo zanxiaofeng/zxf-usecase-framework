@@ -1,5 +1,11 @@
 package com.example.myapp.framework.autoconfigure;
 
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestClient;
+
 import com.example.myapp.framework.auth.ApiKeyAuthHandler;
 import com.example.myapp.framework.auth.AuthHandler;
 import com.example.myapp.framework.auth.BasicAuthHandler;
@@ -9,11 +15,6 @@ import com.example.myapp.framework.auth.NoAuthHandler;
 import com.example.myapp.framework.codec.Base64Codec;
 import com.example.myapp.framework.codec.Codec;
 import com.example.myapp.framework.codec.HexCodec;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

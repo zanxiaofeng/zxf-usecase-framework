@@ -1,12 +1,13 @@
 package com.example.myapp.application.step;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import org.springframework.stereotype.Component;
+
 import com.example.myapp.application.dto.UserDto;
 import com.example.myapp.framework.core.DataTransformer;
 import com.example.myapp.framework.core.StepContext;
-import org.springframework.stereotype.Component;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * 自定义业务 step 示例：合并用户主数据（payload）与信用分旁路数据（#vars.credit），生成用户画像。

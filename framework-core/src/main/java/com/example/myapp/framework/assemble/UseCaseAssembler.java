@@ -1,16 +1,5 @@
 package com.example.myapp.framework.assemble;
 
-import com.example.myapp.framework.core.UseCase.EndpointSpec;
-import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
-import com.example.myapp.framework.core.UseCaseRegistry;
-import com.example.myapp.framework.steps.SubUseCaseStepFactory;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.http.HttpMethod;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,6 +12,18 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.http.HttpMethod;
+
+import com.example.myapp.framework.core.Step;
+import com.example.myapp.framework.core.UseCase.EndpointSpec;
+import com.example.myapp.framework.core.UseCase;
+import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
+import com.example.myapp.framework.steps.SubUseCaseStepFactory;
 
 /**
  * 用例装配器：启动期把 {@code usecase.definitions} 配置翻译成 {@link UseCaseRegistry}。

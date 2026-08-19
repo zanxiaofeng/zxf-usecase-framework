@@ -1,13 +1,13 @@
 package com.example.myapp.infrastructure.adapter.in.web.demo;
 
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 /**
  * 仅用于本地演示的下游信用服务桩：校验 Bearer 头（演示 AuthHandler 生效），返回固定信用分。

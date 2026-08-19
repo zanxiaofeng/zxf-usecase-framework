@@ -1,12 +1,12 @@
 package com.example.myapp.unit.framework;
 
+import java.util.Map;
+
 import lombok.experimental.UtilityClass;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.servlet.function.ServerRequest;
-
-import java.util.Map;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;

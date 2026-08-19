@@ -1,13 +1,14 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.invoke.UseCaseInvoker;
-import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import java.util.function.Supplier;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.function.Supplier;
+import com.example.myapp.framework.core.Step;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
+import com.example.myapp.framework.expression.StepExpressionEvaluator;
 
 /**
  * 子用例调用步骤：把另一个 usecase 嵌入当前管道。
@@ -25,7 +26,7 @@ import java.util.function.Supplier;
  * <p>执行统一委托 {@link UseCaseInvoker}——与 Java 代码调用子用例共享同一实现，两种入口的
  * 上下文编排语义不会漂移：{@code isolate} → {@link UseCaseInvoker#invokeIsolated}；
  * 其余 → {@link UseCaseInvoker#invoke}（共享上下文，父 payload 自动恢复）。结果统一经
- * {@link StepResultStore} 落地：未配 {@code as} 时写回 payload（串联模式：子结果成为父
+ * {@link StepContext#storeResult} 落地：未配 {@code as} 时写回 payload（串联模式：子结果成为父
  * payload），配置 {@code as} 时旁路到 {@code #vars}。</p>
  *
  * <p>invoker 经 Supplier 延迟解析：step 创建发生在装配期，此时 invoker 依赖的 registry 尚未就绪。</p>
@@ -55,6 +56,6 @@ public final class SubUseCaseStep implements Step {
         Object result = isolate
                 ? invoker.invokeIsolated(useCaseId, input, context)
                 : invoker.invoke(useCaseId, input, context);
-        StepResultStore.store(context, result, as, true);
+        context.storeResult(result, as, true);
     }
 }

@@ -1,14 +1,8 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.auth.AuthHandler;
-import com.example.myapp.framework.auth.BearerTokenAuthHandler;
-import com.example.myapp.framework.auth.NoAuthHandler;
-import com.example.myapp.framework.assemble.StepDefinition;
-import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import com.example.myapp.framework.steps.HttpRequesterStepFactory;
-import com.example.myapp.framework.core.exception.HttpStepException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -16,8 +10,15 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.example.myapp.framework.assemble.StepDefinition;
+import com.example.myapp.framework.auth.AuthHandler;
+import com.example.myapp.framework.auth.BearerTokenAuthHandler;
+import com.example.myapp.framework.auth.NoAuthHandler;
+import com.example.myapp.framework.core.Step;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.HttpStepException;
+import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.steps.HttpRequesterStepFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

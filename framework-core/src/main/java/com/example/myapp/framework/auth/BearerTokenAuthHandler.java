@@ -1,12 +1,12 @@
 package com.example.myapp.framework.auth;
 
+import java.util.Map;
+
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
-
-import java.util.Map;
 
 /**
  * Bearer Token 认证，两种令牌来源（二选一）：

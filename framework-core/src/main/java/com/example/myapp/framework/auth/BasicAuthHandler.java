@@ -1,11 +1,11 @@
 package com.example.myapp.framework.auth;
 
-import org.springframework.http.HttpHeaders;
-import org.springframework.web.client.RestClient;
-
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.client.RestClient;
 
 /**
  * HTTP Basic 认证。

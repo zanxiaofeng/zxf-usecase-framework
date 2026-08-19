@@ -1,12 +1,13 @@
 package com.example.myapp.infrastructure.adapter.out.persistence;
 
+import java.util.Map;
+import java.util.Optional;
+
+import org.springframework.stereotype.Component;
+
 import com.example.myapp.application.port.out.UserRepository;
 import com.example.myapp.domain.model.User;
 import com.example.myapp.domain.model.UserId;
-import org.springframework.stereotype.Component;
-
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * 演示用内存实现。生产环境按 solution 文档替换为 JPA Adapter

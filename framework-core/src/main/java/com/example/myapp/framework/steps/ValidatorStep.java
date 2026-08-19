@@ -1,9 +1,8 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.exception.StepValidationException;
-import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import com.networknt.schema.Error;
 import com.networknt.schema.Schema;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +10,10 @@ import org.springframework.expression.EvaluationException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import com.example.myapp.framework.core.Step;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.StepValidationException;
+import com.example.myapp.framework.expression.StepExpressionEvaluator;
 
 /**
  * 校验步骤（一般放在管道入口，target 常用 {@code #body}；缺省校验 {@code #payload}）。

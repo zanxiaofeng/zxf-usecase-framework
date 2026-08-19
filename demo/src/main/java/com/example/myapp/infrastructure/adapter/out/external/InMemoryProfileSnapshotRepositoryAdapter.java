@@ -1,14 +1,15 @@
 package com.example.myapp.infrastructure.adapter.out.external;
 
-import com.example.myapp.application.port.out.ProfileSnapshotRepository;
-import org.springframework.stereotype.Component;
-
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.springframework.stereotype.Component;
+
+import com.example.myapp.application.port.out.ProfileSnapshotRepository;
 
 /**
  * 演示用内存实现：保存画像快照并附加快照 ID 与时间戳。

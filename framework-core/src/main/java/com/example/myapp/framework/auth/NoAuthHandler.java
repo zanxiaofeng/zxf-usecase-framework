@@ -1,8 +1,8 @@
 package com.example.myapp.framework.auth;
 
-import org.springframework.web.client.RestClient;
-
 import java.util.Map;
+
+import org.springframework.web.client.RestClient;
 
 /** 无认证（显式声明 scheme: none 时使用；缺省不配置 auth 等效）。 */
 public final class NoAuthHandler implements AuthHandler {

@@ -1,18 +1,19 @@
 package com.example.myapp.unit.framework;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
+
 import com.example.myapp.framework.core.DataLoader;
 import com.example.myapp.framework.core.DataSaver;
 import com.example.myapp.framework.core.DataTransformer;
-import com.example.myapp.framework.core.UseCase.EndpointSpec;
-import org.springframework.http.HttpMethod;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.exception.StepExecutionException;
+import com.example.myapp.framework.core.UseCase.EndpointSpec;
 import com.example.myapp.framework.core.UseCase;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.List;
+import com.example.myapp.framework.core.exception.StepExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

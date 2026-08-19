@@ -1,10 +1,10 @@
 package com.example.myapp.application.port.out;
 
+import java.util.Optional;
+
 import com.example.myapp.domain.exception.UserNotFoundException;
 import com.example.myapp.domain.model.User;
 import com.example.myapp.domain.model.UserId;
-
-import java.util.Optional;
 
 /**
  * 用户仓库出端口（唯一定义处，领域层不重复定义）。

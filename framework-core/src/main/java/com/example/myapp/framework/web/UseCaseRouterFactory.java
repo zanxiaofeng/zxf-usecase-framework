@@ -1,10 +1,10 @@
 package com.example.myapp.framework.web;
 
-import com.example.myapp.framework.core.UseCase.EndpointSpec;
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.UseCase;
-import com.example.myapp.framework.core.UseCaseRegistry;
-import com.example.myapp.framework.steps.StarterStep;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
 import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.RequestPredicate;
@@ -15,10 +15,11 @@ import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.regex.Pattern;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.UseCase.EndpointSpec;
+import com.example.myapp.framework.core.UseCase;
+import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.steps.StarterStep;
 
 /**
  * 把 UseCaseRegistry 中所有用例绑定为一个 {@link RouterFunction}：
@@ -41,6 +42,8 @@ public final class UseCaseRouterFactory {
     private static final Pattern TRACE_ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]{8,128}");
     /** 请求属性中 StepContext 的键（ErrorResponseMapper 取 traceId 用） */
     static final String CONTEXT_ATTRIBUTE = StepContext.class.getName();
+    /** 响应头回填 traceId（对齐 logging.md：客户端可经响应头关联全链路日志） */
+    static final String TRACE_ID_HEADER = "X-Trace-Id";
 
     private final ObjectMapper objectMapper;
     private final ErrorResponseMapper errorMapper;
@@ -82,9 +85,13 @@ public final class UseCaseRouterFactory {
         request.attributes().put(CONTEXT_ATTRIBUTE, context);
         try {
             Object payload = useCase.execute(context);
-            return ServerResponse.status(useCase.getEndpoint().status())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(ApiResponse.success(payload, traceIdOf(context)));
+            String traceId = traceIdOf(context);
+            ServerResponse.BodyBuilder response = ServerResponse.status(useCase.getEndpoint().status())
+                    .contentType(MediaType.APPLICATION_JSON);
+            if (traceId != null) {
+                response.header(TRACE_ID_HEADER, traceId);
+            }
+            return response.body(ApiResponse.success(payload, traceId));
         } finally {
             clearBizMdc();
         }

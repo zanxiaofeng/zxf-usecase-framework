@@ -1,10 +1,11 @@
 package com.example.myapp.framework.steps;
 
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
 
 /**
  * 基于 SpEL 表达式的通用 step 基类。
@@ -35,7 +36,7 @@ abstract class AbstractSpelStep implements Step {
     }
 
     protected void store(StepContext context, Object value) {
-        StepResultStore.store(context, value, as, overwritePayloadWithNull());
+        context.storeResult(value, as, overwritePayloadWithNull());
     }
 
     /** 表达式结果为 null 时是否覆盖 payload。DataSaver 返回 false（void 方法不清空数据）。 */

@@ -1,8 +1,8 @@
 package com.example.myapp.framework.auth;
 
-import org.springframework.web.client.RestClient;
-
 import java.util.Map;
+
+import org.springframework.web.client.RestClient;
 
 /**
  * API Key 认证（请求头形式）。

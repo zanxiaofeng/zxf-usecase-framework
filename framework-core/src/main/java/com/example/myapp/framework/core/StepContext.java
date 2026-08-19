@@ -1,16 +1,13 @@
 package com.example.myapp.framework.core;
 
-import com.example.myapp.framework.core.exception.StepValidationException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import lombok.Getter;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
-import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.ServerRequest;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * 管道执行上下文，在 step 之间流转（线程封闭于管道执行线程，非线程安全）。
@@ -30,7 +27,8 @@ public final class StepContext {
     /** 入站请求；{@link #standalone()} 场景为 null */
     @Getter
     private final @Nullable ServerRequest request;
-    private final @Nullable ObjectMapper objectMapper;
+    /** 请求体视图（惰性解析 + 缓存）；隔离子上下文与父共享同一实例 */
+    private final RequestBodyView bodyView;
     @Getter
     @Setter
     private Object payload;
@@ -38,33 +36,28 @@ public final class StepContext {
     private final Map<String, Object> vars = new LinkedHashMap<>();
     @Getter
     private final Map<String, Object> biz = new LinkedHashMap<>();
-    private boolean bodyRead;
-    private @Nullable Object body;
 
-    private StepContext(@Nullable ServerRequest request, @Nullable ObjectMapper objectMapper) {
+    private StepContext(@Nullable ServerRequest request, RequestBodyView bodyView) {
         this.request = request;
-        this.objectMapper = objectMapper;
+        this.bodyView = bodyView;
     }
 
     /** Web 入口上下文：关联当前入站请求（由 framework.web.UseCaseRouterFactory 创建）。 */
     public static StepContext of(ServerRequest request, ObjectMapper objectMapper) {
-        return new StepContext(request, objectMapper);
+        return new StepContext(request, new RequestBodyView(request, objectMapper));
     }
 
     /** 管道外独立调用上下文（调度任务、消息消费、普通 Service）：无入站请求。 */
     public static StepContext standalone() {
-        return new StepContext(null, null);
+        return new StepContext(null, new RequestBodyView(null, null));
     }
 
     /**
-     * 隔离子上下文（UseCaseInvoker.invokeIsolated 使用）：共享入站请求与父已解析的 body 缓存
-     * （Servlet 请求体流只能消费一次），vars / payload 全新，biz 由调用方拷贝继承。
+     * 隔离子上下文（UseCaseInvoker.invokeIsolated 使用）：共享入站请求与请求体视图
+     * （Servlet 请求体流只能消费一次，body 缓存随之共享），vars / payload 全新，biz 由调用方拷贝继承。
      */
     public StepContext newChildContext() {
-        StepContext child = new StepContext(request, objectMapper);
-        child.bodyRead = this.bodyRead;
-        child.body = this.body;
-        return child;
+        return new StepContext(request, bodyView);
     }
 
     /** 从父上下文拷贝继承 biz 关键数据区（隔离子用例调用用；拷贝后子的修改不回传父） */
@@ -90,62 +83,33 @@ public final class StepContext {
     }
 
     /**
-     * 请求体：惰性读取并缓存（只在表达式真正引用 {@code #body} 时解析），仅 POST/PUT/PATCH 尝试读体：
-     * 空体 → {@code null}；JSON 内容类型（缺省视为 JSON，含 {@code +json} 后缀类型）→ Jackson 严格解析为
-     * Map/List，<b>语法错误抛 {@link StepValidationException}</b>（映射 400，而非静默置 null 导致后续
-     * schema 校验报出误导性明细）；其他内容类型 → 纯文本 String。standalone 场景恒为 null。
+     * 请求体：委托 {@link RequestBodyView}（惰性读取并缓存；语义与边界情况见其 Javadoc）。
+     * standalone 场景恒为 null。
      */
     public @Nullable Object getBody() {
-        if (!bodyRead) {
-            body = readBodySafely();
-            bodyRead = true;
-        }
-        return body;
-    }
-
-    private @Nullable Object readBodySafely() {
-        ServerRequest currentRequest = request;
-        ObjectMapper mapper = objectMapper;
-        if (currentRequest == null || mapper == null) {
-            return null;
-        }
-        String method = currentRequest.method().name();
-        if (!("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method))) {
-            return null;
-        }
-        String raw = readRawBody(currentRequest);
-        if (raw == null || raw.isBlank()) {
-            return null;    // 空体
-        }
-        if (!isJsonContentType(currentRequest)) {
-            return raw;     // 非 JSON 内容类型：按纯文本处理
-        }
-        try {
-            return mapper.readValue(raw, Object.class);
-        } catch (JacksonException e) {
-            throw new StepValidationException("BAD_REQUEST",
-                    "Malformed JSON request body: " + e.getMessage());
-        }
-    }
-
-    private @Nullable String readRawBody(ServerRequest currentRequest) {
-        try {
-            return currentRequest.body(String.class);
-        } catch (Exception e) {
-            return null;    // 读取失败（如体已被消费）：按无体处理
-        }
-    }
-
-    /** REST 惯例：未声明内容类型时按 JSON 处理 */
-    private boolean isJsonContentType(ServerRequest currentRequest) {
-        MediaType contentType = currentRequest.headers().contentType().orElse(MediaType.APPLICATION_JSON);
-        return MediaType.APPLICATION_JSON.isCompatibleWith(contentType)
-                || contentType.getSubtype().endsWith("+json");
+        return bodyView.getBody();
     }
 
     /** 类型化读取：类型不符时立即抛 ClassCastException（而非延迟到调用点） */
     public <T> T getPayload(Class<T> type) {
         return type.cast(payload);
+    }
+
+    /**
+     * step 结果落地规则（所有内置 step 一致）：
+     * <ul>
+     *   <li>配置 {@code as} → 写入 {@code #vars[as]}，payload 保持不变（旁路数据）；</li>
+     *   <li>未配置 {@code as} → 写入 payload；{@code overwritePayloadWithNull=false} 时 null 不覆盖。</li>
+     * </ul>
+     */
+    public void storeResult(@Nullable Object value, @Nullable String as, boolean overwritePayloadWithNull) {
+        if (as != null) {
+            putVar(as, value);
+            return;
+        }
+        if (value != null || overwritePayloadWithNull) {
+            setPayload(value);
+        }
     }
 
     public void putVar(String name, Object value) {

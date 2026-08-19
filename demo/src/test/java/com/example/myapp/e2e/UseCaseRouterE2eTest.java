@@ -1,19 +1,19 @@
 package com.example.myapp.e2e;
 
-import com.example.myapp.domain.event.SnapshotCreatedEvent;
-import com.example.myapp.infrastructure.adapter.out.messaging.InMemoryEventPublisherAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.example.myapp.domain.event.SnapshotCreatedEvent;
+import com.example.myapp.infrastructure.adapter.out.messaging.InMemoryEventPublisherAdapter;
+
 import static org.assertj.core.api.Assertions.assertThat;
-
-import org.springframework.http.MediaType;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -45,7 +45,8 @@ class UseCaseRouterE2eTest {
     void getUser_propagatesCallerTraceId() throws Exception {
         mockMvc.perform(get("/api/v1/users/u1").header("X-Request-Id", "trace-from-caller"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.traceId").value("trace-from-caller"));
+                .andExpect(jsonPath("$.traceId").value("trace-from-caller"))
+                .andExpect(header().string("X-Trace-Id", "trace-from-caller"));
     }
 
     @Test
@@ -72,7 +73,8 @@ class UseCaseRouterE2eTest {
         mockMvc.perform(get("/api/v1/users/unknown"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(header().exists("X-Trace-Id"));
     }
 
     @Test

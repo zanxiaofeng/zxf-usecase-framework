@@ -1,17 +1,18 @@
 package com.example.myapp.framework.steps;
 
+import java.util.Locale;
+import java.util.Map;
+
+import lombok.RequiredArgsConstructor;
+
 import com.example.myapp.framework.assemble.StepConfig;
-import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.assemble.StepDefinition;
+import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.codec.Codec;
 import com.example.myapp.framework.codec.ReversibleCodec;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import lombok.RequiredArgsConstructor;
-
-import java.util.Locale;
-import java.util.Map;
 
 /**
  * encoder / decoder 步骤共用工厂（按 {@link CodecStep.Direction} 区分实例）。

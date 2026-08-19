@@ -1,5 +1,12 @@
 package com.example.myapp.unit.framework;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
+
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
@@ -7,12 +14,6 @@ import com.example.myapp.framework.core.exception.StepValidationException;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.ValidatorStepFactory;
-import org.junit.jupiter.api.Test;
-import tools.jackson.databind.ObjectMapper;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

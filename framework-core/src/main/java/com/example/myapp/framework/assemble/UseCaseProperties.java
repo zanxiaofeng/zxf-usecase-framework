@@ -1,10 +1,10 @@
 package com.example.myapp.framework.assemble;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.DefaultValue;
-
 import java.util.List;
 import java.util.Map;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
  * 框架配置根，前缀 {@code usecase}。缺省时两项均为空集合/空 Map。

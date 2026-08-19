@@ -1,16 +1,17 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.core.HttpRequester;
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.exception.HttpStepException;
-import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestClient;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.example.myapp.framework.core.HttpRequester;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.HttpStepException;
+import com.example.myapp.framework.expression.StepExpressionEvaluator;
 
 /**
  * 配置驱动的外部 HTTP 调用步骤。
@@ -84,7 +85,7 @@ public final class HttpRequesterStep implements HttpRequester {
             }
             return responseBody;
         });
-        StepResultStore.store(context, result, as, true);
+        context.storeResult(result, as, true);
     }
 
     private Map<String, Object> resolveMap(Map<String, Object> source, StepContext context) {

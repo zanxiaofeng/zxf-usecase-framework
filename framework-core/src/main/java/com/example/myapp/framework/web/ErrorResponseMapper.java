@@ -1,11 +1,11 @@
 package com.example.myapp.framework.web;
 
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.exception.ErrorCoded;
-import com.example.myapp.framework.core.exception.HttpStepException;
-import com.example.myapp.framework.core.exception.StepExecutionException;
+import java.lang.reflect.Method;
+import java.util.Map;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.client.ResourceAccessException;
@@ -13,8 +13,10 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
 
-import java.lang.reflect.Method;
-import java.util.Map;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.ErrorCoded;
+import com.example.myapp.framework.core.exception.HttpStepException;
+import com.example.myapp.framework.core.exception.StepExecutionException;
 
 /**
  * 用例管道异常 → HTTP 响应映射（等价于 @RestControllerAdvice 的职责，自包含于 router 以适配函数式端点）：
@@ -47,16 +49,16 @@ public class ErrorResponseMapper {
             int status = resolveStatus(cause);
             logFailure(status, thrown, cause);
             String message = status >= 500 ? "Internal server error" : cause.getMessage();
-            return json(status, ApiResponse.error(errorCode, message, traceId));
+            return json(status, ApiResponse.error(errorCode, message, traceId), traceId);
         }
         if (cause instanceof HttpStepException
                 || cause instanceof RestClientResponseException
                 || cause instanceof ResourceAccessException) {
             log.warn("downstream call failed: {}", cause.getMessage());
-            return json(502, ApiResponse.error("DOWNSTREAM_ERROR", "Downstream service call failed", traceId));
+            return json(502, ApiResponse.error("DOWNSTREAM_ERROR", "Downstream service call failed", traceId), traceId);
         }
         log.error("unexpected error in usecase pipeline", thrown);
-        return json(500, ApiResponse.error("INTERNAL_ERROR", "Internal server error", traceId));
+        return json(500, ApiResponse.error("INTERNAL_ERROR", "Internal server error", traceId), traceId);
     }
 
     /** 5xx 记 ERROR 附完整堆栈（系统故障）；其余记 WARN 不附堆栈（业务/客户端问题，一次一处日志） */
@@ -110,7 +112,11 @@ public class ErrorResponseMapper {
         }
     }
 
-    private ServerResponse json(int status, ApiResponse<?> body) {
-        return ServerResponse.status(status).contentType(MediaType.APPLICATION_JSON).body(body);
+    private ServerResponse json(int status, ApiResponse<?> body, @Nullable String traceId) {
+        ServerResponse.BodyBuilder response = ServerResponse.status(status).contentType(MediaType.APPLICATION_JSON);
+        if (traceId != null) {
+            response.header(UseCaseRouterFactory.TRACE_ID_HEADER, traceId);
+        }
+        return response.body(body);
     }
 }

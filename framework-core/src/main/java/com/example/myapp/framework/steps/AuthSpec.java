@@ -1,10 +1,11 @@
 package com.example.myapp.framework.steps;
 
-import com.example.myapp.framework.auth.AuthHandler;
+import java.util.Map;
+
 import org.jspecify.annotations.Nullable;
 import org.springframework.web.client.RestClient;
 
-import java.util.Map;
+import com.example.myapp.framework.auth.AuthHandler;
 
 /**
  * httpRequester 的认证配置：装配期已解析的单个 {@link AuthHandler} + options。

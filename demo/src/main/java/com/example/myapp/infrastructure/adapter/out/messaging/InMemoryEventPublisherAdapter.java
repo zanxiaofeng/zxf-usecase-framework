@@ -1,10 +1,11 @@
 package com.example.myapp.infrastructure.adapter.out.messaging;
 
-import com.example.myapp.framework.core.EventPublisher;
-import org.springframework.stereotype.Component;
-
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.springframework.stereotype.Component;
+
+import com.example.myapp.framework.core.EventPublisher;
 
 /**
  * 演示用内存事件发布适配器：记录已发布事件供观测与测试断言。

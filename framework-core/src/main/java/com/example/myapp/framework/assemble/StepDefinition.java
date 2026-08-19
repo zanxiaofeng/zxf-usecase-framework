@@ -1,8 +1,8 @@
 package com.example.myapp.framework.assemble;
 
-import org.springframework.boot.context.properties.bind.ConstructorBinding;
-
 import java.util.Map;
+
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * 单个 step 的配置定义。

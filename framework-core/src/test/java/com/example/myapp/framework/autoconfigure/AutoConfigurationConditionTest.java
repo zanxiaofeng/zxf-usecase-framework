@@ -1,13 +1,14 @@
 package com.example.myapp.framework.autoconfigure;
 
-import com.example.myapp.framework.core.invoke.UseCaseInvoker;
-import com.example.myapp.framework.core.UseCaseRegistry;
-import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.web.client.RestClient;
+
+import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.invoke.UseCaseInvoker;
+import com.example.myapp.framework.expression.StepExpressionEvaluator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

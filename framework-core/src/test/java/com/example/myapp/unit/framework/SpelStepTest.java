@@ -1,16 +1,17 @@
 package com.example.myapp.unit.framework;
 
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import com.example.myapp.framework.steps.SpelDataLoaderStep;
-import com.example.myapp.framework.steps.SpelDataSaverStep;
-import com.example.myapp.framework.steps.SpelDataTransformerStep;
+import java.util.Map;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.StaticApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.Map;
+import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.steps.SpelDataLoaderStep;
+import com.example.myapp.framework.steps.SpelDataSaverStep;
+import com.example.myapp.framework.steps.SpelDataTransformerStep;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

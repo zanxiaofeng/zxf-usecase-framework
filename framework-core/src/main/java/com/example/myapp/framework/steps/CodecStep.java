@@ -1,11 +1,12 @@
 package com.example.myapp.framework.steps;
 
+import lombok.RequiredArgsConstructor;
+
 import com.example.myapp.framework.codec.Codec;
 import com.example.myapp.framework.codec.ReversibleCodec;
 import com.example.myapp.framework.core.DataTransformer;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
-import lombok.RequiredArgsConstructor;
 
 /**
  * 编解码步骤：{@code source} 表达式取值（缺省 #payload）→ Codec 按 {@link Direction} 编码或解码
@@ -54,6 +55,6 @@ public final class CodecStep implements DataTransformer {
     public void execute(StepContext context) {
         Object source = evaluator.evaluate(sourceExpression, context);
         String result = source == null ? null : direction.apply(codec, String.valueOf(source));
-        StepResultStore.store(context, result, as, true);
+        context.storeResult(result, as, true);
     }
 }
