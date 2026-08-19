@@ -85,6 +85,7 @@ class LoggingStepTest {
         assertThatThrownBy(() -> factory.create(new StepDefinition(
                 "logCredit", "logging", null, Map.of("level", "verbose")).withUseCaseId("testUc")))
                 .isInstanceOf(UseCaseAssemblyException.class)
-                .hasMessageContaining("invalid logging level");
+                .hasMessageContaining("verbose")
+                .hasMessageContaining("Level");
     }
 }

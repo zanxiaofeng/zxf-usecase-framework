@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 import org.springframework.web.servlet.function.ServerRequest;
@@ -22,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
  *       此时各请求视图为空 Map / null</li>
  * </ul>
  */
+@RequiredArgsConstructor
 public final class StepContext {
 
     /** 入站请求；{@link #standalone()} 场景为 null */
@@ -36,11 +38,6 @@ public final class StepContext {
     private final Map<String, Object> vars = new LinkedHashMap<>();
     @Getter
     private final Map<String, Object> biz = new LinkedHashMap<>();
-
-    private StepContext(@Nullable ServerRequest request, RequestBodyView bodyView) {
-        this.request = request;
-        this.bodyView = bodyView;
-    }
 
     /** Web 入口上下文：关联当前入站请求（由 framework.web.UseCaseRouterFactory 创建）。 */
     public static StepContext of(ServerRequest request, ObjectMapper objectMapper) {

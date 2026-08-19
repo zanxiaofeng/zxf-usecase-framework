@@ -1,6 +1,7 @@
 
 package com.example.myapp.framework.core;
 
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.ServerRequest;
@@ -21,6 +22,7 @@ import com.example.myapp.framework.core.exception.StepValidationException;
  * <p>包私有、随上下文线程封闭，非线程安全；隔离子上下文与父共享同一视图
  * （Servlet 请求体流只能消费一次，缓存随之共享）。</p>
  */
+@RequiredArgsConstructor
 final class RequestBodyView {
 
     private final @Nullable ServerRequest request;
@@ -28,12 +30,9 @@ final class RequestBodyView {
     private boolean bodyRead;
     private @Nullable Object body;
 
-    RequestBodyView(@Nullable ServerRequest request, @Nullable ObjectMapper objectMapper) {
-        this.request = request;
-        this.objectMapper = objectMapper;
-    }
-
-    /** 请求体（语义见类 Javadoc）；standalone 场景恒为 null */
+    /**
+     * 请求体（语义见类 Javadoc）；standalone 场景恒为 null
+     */
     @Nullable Object getBody() {
         if (!bodyRead) {
             body = readBodySafely();
@@ -75,7 +74,9 @@ final class RequestBodyView {
         }
     }
 
-    /** REST 惯例：未声明内容类型时按 JSON 处理 */
+    /**
+     * REST 惯例：未声明内容类型时按 JSON 处理
+     */
     private boolean isJsonContentType(ServerRequest currentRequest) {
         MediaType contentType = currentRequest.headers().contentType().orElse(MediaType.APPLICATION_JSON);
         return MediaType.APPLICATION_JSON.isCompatibleWith(contentType)

@@ -5,7 +5,7 @@ import java.util.Map;
 
 import lombok.RequiredArgsConstructor;
 
-import com.example.myapp.framework.assemble.StepConfig;
+import com.example.myapp.framework.assemble.StepConfigs;
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.codec.Codec;
@@ -13,9 +13,11 @@ import com.example.myapp.framework.codec.ReversibleCodec;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.steps.config.CodecStepConfig;
 
 /**
  * encoder / decoder 步骤共用工厂（按 {@link CodecStep.Direction} 区分实例）。
+ * config schema 见 {@link CodecStepConfig}；算法存在性与 decoder 可逆性依赖注册表，在此校验。
  *
  * <p>配置：</p>
  * <pre>{@code
@@ -42,9 +44,9 @@ public final class CodecStepFactory implements StepFactory {
 
     @Override
     public Step create(StepDefinition definition) {
-        StepConfig config = StepConfig.of(definition);
+        CodecStepConfig config = StepConfigs.bind(definition, CodecStepConfig.class);
         String name = definition.nameOr(type);
-        String algorithm = config.requiredString("algorithm").toLowerCase(Locale.ROOT);
+        String algorithm = config.getAlgorithm().toLowerCase(Locale.ROOT);
         Codec codec = codecs.get(algorithm);
         if (codec == null) {
             throw new UseCaseAssemblyException(
@@ -56,8 +58,6 @@ public final class CodecStepFactory implements StepFactory {
                     "step [%s]: codec algorithm '%s' does not support decode (one-way digest)"
                             .formatted(name, algorithm));
         }
-        String source = config.stringOr("source", "#payload");
-        String as = config.optionalString("as");
-        return new CodecStep(name, codec, direction, source, as, evaluator);
+        return new CodecStep(name, codec, direction, config.getSource(), config.getAs(), evaluator);
     }
 }

@@ -33,6 +33,13 @@
             <artifactId>spring-tx</artifactId>
         </dependency>
 
+        <!-- step config 声明式校验：类型化 config record + Bean Validation 注解（装配期 fail-fast，
+             替代 StepFactory 内散落的命令式 null check；版本由 Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+        </dependency>
+
         <!-- Validator step：JSON Schema 校验（3.0.x 起基于 Jackson 3 / tools.jackson，与 Spring Boot 4 兼容） -->
         <dependency>
             <groupId>com.networknt</groupId>

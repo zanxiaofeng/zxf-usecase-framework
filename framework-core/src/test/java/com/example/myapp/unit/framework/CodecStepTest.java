@@ -109,4 +109,13 @@ class CodecStepTest {
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("unknown codec algorithm");
     }
+
+    @Test
+    void missingAlgorithmFailsFastWithDeclarativeConstraint() {
+        // @NotBlank 声明式校验（StepConfigs 绑定器），替代原 StepConfig.requiredString 的命令式检查
+        assertThatThrownBy(() -> encoderFactory.create(new StepDefinition(
+                "bad", "encoder", null, Map.of())))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("config 'algorithm'");
+    }
 }

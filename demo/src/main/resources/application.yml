@@ -23,6 +23,30 @@ usecase:
   error-mappings:
     com.example.myapp.domain.exception.UserNotFoundException: 404
 
+  # ---------------------------------------------------------------------
+  # schema 库：JSON Schema 集中定义处。纯配置层复用机制——YAML 锚点（&）+
+  # 别名（*），SnakeYAML 解析期展开，框架无感知、零代码支持。
+  # 注意：本键不是框架绑定属性（UseCaseProperties 忽略未知键），仅作锚点
+  # 宿主；锚点必须先于别名出现，故置于 definitions 之前；别名拼错在启动
+  # 解析期即报错（fail-fast）。每处别名是解析期拷贝，各步骤仍各自预编译。
+  # ---------------------------------------------------------------------
+  schemas:
+    userSnapshotBody: &userSnapshotBody
+      type: object
+      required: [userId, name]
+      properties:
+        userId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+
   definitions:
     # ---------------------------------------------------------------
     # shared 用例：不绑定 endpoint，仅作为子用例被其他用例内嵌调用
@@ -190,21 +214,7 @@ usecase:
           type: validator              # schema 模式：装配期预编译，失败返回全部字段错误明细
           config:
             target: "#body"            # 校验请求体（缺省 #payload）
-            schema:
-              type: object
-              required: [userId, name]
-              properties:
-                userId:
-                  type: string
-                  minLength: 1
-                name:
-                  type: string
-                  minLength: 1
-                tags:
-                  type: array
-                  items:
-                    type: string
-              additionalProperties: false
+            schema: *userSnapshotBody  # 引用 usecase.schemas 集中定义（YAML 别名）
         - name: checkUserExists
           type: usecase
           ref: userBaseEnrichment

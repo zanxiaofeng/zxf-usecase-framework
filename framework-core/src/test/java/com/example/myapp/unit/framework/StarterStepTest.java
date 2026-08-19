@@ -70,6 +70,15 @@ class StarterStepTest {
     }
 
     @Test
+    void blankKeyExpressionFailsFastAtAssembly() {
+        // 容器元素约束：keys 的表达式值不允许空白（声明式校验，替代原工厂内的逐条 null check）
+        assertThatThrownBy(() -> new StarterStepFactory(evaluator)
+                .create(new StepDefinition("start", "starter", null, Map.of("keys", Map.of("businessId", " ")))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("keys");
+    }
+
+    @Test
     void mdcValueStripsControlCharactersWhileBizKeepsRawValue() {
         Map<String, Object> keys = Map.of("channel", "#headers['X-Channel']");
         Step step = new StarterStepFactory(evaluator)

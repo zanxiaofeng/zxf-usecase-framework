@@ -12,17 +12,18 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import com.example.myapp.framework.assemble.StepConfig;
+import com.example.myapp.framework.assemble.StepConfigs;
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.core.Step;
-import com.example.myapp.framework.core.exception.StepValidationException;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.steps.config.ValidatorConfig;
 
 /**
- * validator 步骤工厂：expression 与 schema 二选一（互斥校验，fail-fast）；
- * schema 在装配期预编译为 {@link Schema}，避免运行期重复解析。
+ * validator 步骤工厂：config schema 见 {@link ValidatorConfig}（expression 与 schema
+ * 二选一的互斥约束由 {@code @AssertTrue} 声明式校验）；schema 在装配期预编译为
+ * {@link Schema}，避免运行期重复解析。
  *
  * <p>底层使用 networknt json-schema-validator 3.x（基于 Jackson 3，与 Spring Boot 4 兼容），
  * 缺省方言为 JSON Schema 2020-12。</p>
@@ -46,31 +47,20 @@ public final class ValidatorStepFactory implements StepFactory {
 
     @Override
     public Step create(StepDefinition definition) {
-        StepConfig config = StepConfig.of(definition);
+        ValidatorConfig config = StepConfigs.bind(definition, ValidatorConfig.class);
         String name = definition.nameOr(TYPE);
-        String target = config.stringOr("target", "#payload");
-        String expression = config.optionalString("expression");
-        Map<String, Object> schemaMap = config.mapOrEmpty("schema");
-
-        boolean hasExpression = expression != null;
-        boolean hasSchema = !schemaMap.isEmpty();
-        if (hasExpression == hasSchema) {
-            throw new UseCaseAssemblyException(
-                    "step [%s]: exactly one of 'expression' or 'schema' must be configured".formatted(name));
-        }
-        String message = config.optionalString("message");
-        String errorCode = config.stringOr("errorCode", StepValidationException.DEFAULT_CODE);
 
         Schema schema = null;
-        if (hasSchema) {
+        if (config.getSchema() != null && !config.getSchema().isEmpty()) {
             try {
-                JsonNode schemaNode = objectMapper.valueToTree(normalizeConfigValue(schemaMap));
+                JsonNode schemaNode = objectMapper.valueToTree(normalizeConfigValue(config.getSchema()));
                 schema = SCHEMA_REGISTRY.getSchema(schemaNode);
             } catch (Exception e) {
                 throw new UseCaseAssemblyException("step [%s]: invalid JSON schema: %s".formatted(name, e.getMessage()), e);
             }
         }
-        return new ValidatorStep(name, target, expression, schema, message, errorCode, evaluator, objectMapper);
+        return new ValidatorStep(name, config.getTarget(), config.getExpression(), schema, config.getMessage(),
+                config.getErrorCode(), evaluator, objectMapper);
     }
 
     /**

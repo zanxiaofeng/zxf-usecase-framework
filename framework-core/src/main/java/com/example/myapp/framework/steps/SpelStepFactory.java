@@ -2,14 +2,16 @@ package com.example.myapp.framework.steps;
 
 import lombok.RequiredArgsConstructor;
 
-import com.example.myapp.framework.assemble.StepConfig;
+import com.example.myapp.framework.assemble.StepConfigs;
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
+import com.example.myapp.framework.steps.config.SpelStepConfig;
 
 /**
  * SpEL 三件套（dataLoader / dataTransformer / dataSaver）共用的工厂，按角色区分实例。
+ * config schema 见 {@link SpelStepConfig}。
  */
 @RequiredArgsConstructor
 public final class SpelStepFactory implements StepFactory {
@@ -29,14 +31,12 @@ public final class SpelStepFactory implements StepFactory {
 
     @Override
     public Step create(StepDefinition definition) {
-        StepConfig config = StepConfig.of(definition);
-        String expression = config.requiredString("expression");
-        String as = config.optionalString("as");
+        SpelStepConfig config = StepConfigs.bind(definition, SpelStepConfig.class);
         String name = definition.nameOr(type);
         return switch (role) {
-            case LOADER -> new SpelDataLoaderStep(name, expression, as, evaluator);
-            case TRANSFORMER -> new SpelDataTransformerStep(name, expression, as, evaluator);
-            case SAVER -> new SpelDataSaverStep(name, expression, as, evaluator);
+            case LOADER -> new SpelDataLoaderStep(name, config.expression(), config.as(), evaluator);
+            case TRANSFORMER -> new SpelDataTransformerStep(name, config.expression(), config.as(), evaluator);
+            case SAVER -> new SpelDataSaverStep(name, config.expression(), config.as(), evaluator);
         };
     }
 }
