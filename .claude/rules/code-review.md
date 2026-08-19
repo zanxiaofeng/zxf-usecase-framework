@@ -36,6 +36,13 @@ paths:
 - [ ] 方法缩进是否 ≤ 2 层（推荐）？
 - [ ] 领域 Entity 是否通过领域方法操作状态，而非 public setter？
 
+### SOLID 与迪米特法则（→ `java-solid-lod.md`）
+- [ ] Service/Domain 是否只依赖 Domain Port 接口（DIP 强制），无 `new` 具体实现、无直接注入 JpaRepository/RestClient？
+- [ ] 新增策略/副作用是否走扩展点（策略 Bean / Domain Event），而非修改既有 if-else 链（OCP）？
+- [ ] 接口实现是否满足契约：不强化前置条件、不弱化后置条件、不抛未声明异常（LSP）？
+- [ ] 是否无胖接口强迫空实现（ISP）、无跨层穿透调用如 Controller→Repository（LoD）？
+- [ ] 「取数据 → 判断 → 改数据」的逻辑是否放在数据所在的类里（LoD / Feature Envy）？
+
 ### API 设计（→ `api-conventions.md`）
 - [ ] Service 默认具体 class；仅多实现/策略时抽接口（勿为单实现强抽接口）？
 - [ ] Controller 是否无业务逻辑？

@@ -4,11 +4,11 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.1（2026-08-19 修订：§5.2 新增「构造器」小节——纯赋值构造器一律 `@RequiredArgsConstructor`）
+**版本：** 3.2（2026-08-19 修订：相关规范新增 `java-solid-lod.md` 引用）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
-> **相关规范：** 校验与契约编程（声明式 Bean Validation / 命令式断言 / 不变式）见 `validation.md`；对象健身操（OO 设计约束）见 `java-object-calisthenics.md`；异常处理（分类/抛出/捕获/全局处理）见 `exception-handling.md`；日志规范见 `logging.md`。
+> **相关规范：** 校验与契约编程（声明式 Bean Validation / 命令式断言 / 不变式）见 `validation.md`；对象健身操（OO 设计约束）见 `java-object-calisthenics.md`；SOLID 原则与迪米特法则（LoD）见 `java-solid-lod.md`；异常处理（分类/抛出/捕获/全局处理）见 `exception-handling.md`；日志规范见 `logging.md`。
 
 ***
 

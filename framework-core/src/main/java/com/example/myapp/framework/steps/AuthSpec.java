@@ -1,25 +1,22 @@
 package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.auth.AuthHandler;
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.client.RestClient;
 
 import java.util.Map;
 
 /**
- * httpRequester 的认证配置（scheme + options + handler 查找表三元组）。
- * scheme 为空或 {@code none} 时不携带认证头；其余 scheme 的 handler 存在性
- * 由 HttpRequesterStepFactory 在装配期校验，这里仅兜底防御。
+ * httpRequester 的认证配置：装配期已解析的单个 {@link AuthHandler} + options。
+ * handler 为 null（未配置 auth）时不携带认证头；scheme 存在性与 options 校验
+ * 由 HttpRequesterStepFactory 在装配期完成（fail-fast），运行期零查找零防御分支。
  */
-record AuthSpec(String scheme, Map<String, Object> options, Map<String, AuthHandler> handlers) {
+record AuthSpec(@Nullable AuthHandler handler, Map<String, Object> options) {
 
-    /** 按 scheme 找到 handler 并应用认证头；scheme 空 / none 时什么都不做 */
+    /** 应用认证头；未配置认证时什么都不做 */
     void apply(RestClient.RequestHeadersSpec<?> request) {
-        if (scheme == null || scheme.isBlank() || "none".equalsIgnoreCase(scheme)) {
-            return;
-        }
-        AuthHandler handler = handlers.get(scheme);
         if (handler == null) {
-            throw new IllegalStateException("no AuthHandler for scheme: " + scheme);
+            return;
         }
         handler.apply(request, options);
     }

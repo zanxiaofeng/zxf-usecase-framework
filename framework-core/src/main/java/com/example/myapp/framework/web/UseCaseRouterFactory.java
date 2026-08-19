@@ -45,9 +45,10 @@ public final class UseCaseRouterFactory {
     private final ObjectMapper objectMapper;
     private final ErrorResponseMapper errorMapper;
 
-    public UseCaseRouterFactory(Map<String, Integer> errorMappings, ObjectMapper objectMapper) {
+    /** errorMapper 为可替换的策略协作者（DIP），由组合根（AutoConfiguration）装配注入 */
+    public UseCaseRouterFactory(ErrorResponseMapper errorMapper, ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        this.errorMapper = new ErrorResponseMapper(errorMappings);
+        this.errorMapper = errorMapper;
     }
 
     public RouterFunction<ServerResponse> build(UseCaseRegistry registry) {

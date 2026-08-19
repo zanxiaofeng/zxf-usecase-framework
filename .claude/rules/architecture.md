@@ -421,6 +421,7 @@ src/test/java/{base-package}/
 | 异常处理完整规范 | `exception-handling.md` |
 | 参数校验规范 | `validation.md` |
 | Java 编码规范 | `java-coding-standard.md` |
+| SOLID 与迪米特法则 | `java-solid-lod.md` |
 | 对象健身操 | `java-object-calisthenics.md` |
 | 日志规范 | `logging.md` |
 | 数据库规范 | `db-conventions.md` |

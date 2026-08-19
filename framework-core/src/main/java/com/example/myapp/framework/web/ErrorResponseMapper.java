@@ -26,10 +26,12 @@ import java.util.Map;
  *   <li>下游 HTTP 失败（HttpStepException / RestClientResponseException / ResourceAccessException）→ 502；</li>
  *   <li>其余兜底 → 500 固定文案。</li>
  * </ul>
+ *
+ * <p>错误映射是可替换的策略协作者（DIP），经构造器注入；定制错误翻译时替换本类 Bean 即可。</p>
  */
 @Slf4j
 @RequiredArgsConstructor
-class ErrorResponseMapper {
+public class ErrorResponseMapper {
 
     private final Map<String, Integer> errorMappings;
 

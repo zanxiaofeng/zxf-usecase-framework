@@ -3,7 +3,7 @@ package com.example.myapp.framework.codec;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 
-public final class HexCodec implements Codec {
+public final class HexCodec implements ReversibleCodec {
 
     @Override
     public String algorithm() {
@@ -13,11 +13,6 @@ public final class HexCodec implements Codec {
     @Override
     public String encode(String plain) {
         return HexFormat.of().formatHex(plain.getBytes(StandardCharsets.UTF_8));
-    }
-
-    @Override
-    public boolean supportsDecode() {
-        return true;
     }
 
     @Override

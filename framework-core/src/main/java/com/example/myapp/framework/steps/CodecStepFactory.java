@@ -4,6 +4,7 @@ import com.example.myapp.framework.assemble.StepConfig;
 import com.example.myapp.framework.assemble.StepFactory;
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.codec.Codec;
+import com.example.myapp.framework.codec.ReversibleCodec;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
@@ -49,7 +50,7 @@ public final class CodecStepFactory implements StepFactory {
                     "step [%s]: unknown codec algorithm '%s', available: %s"
                             .formatted(name, algorithm, codecs.keySet()));
         }
-        if (direction == CodecStep.Direction.DECODE && !codec.supportsDecode()) {
+        if (direction == CodecStep.Direction.DECODE && !(codec instanceof ReversibleCodec)) {
             throw new UseCaseAssemblyException(
                     "step [%s]: codec algorithm '%s' does not support decode (one-way digest)"
                             .formatted(name, algorithm));

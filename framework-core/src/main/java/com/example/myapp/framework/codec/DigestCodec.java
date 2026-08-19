@@ -7,7 +7,8 @@ import java.util.HexFormat;
 import java.util.Locale;
 
 /**
- * 单向摘要算法（md5 / sha256 / ...），仅可用于 encoder，不可用于 decoder。
+ * 单向摘要算法（md5 / sha256 / ...），仅实现 {@link Codec} 的编码能力，
+ * 不实现 {@link ReversibleCodec}——decoder 步骤引用时在装配期 fail-fast。
  */
 public final class DigestCodec implements Codec {
 
@@ -39,10 +40,5 @@ public final class DigestCodec implements Codec {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("unreachable: algorithm validated at construction", e);
         }
-    }
-
-    @Override
-    public boolean supportsDecode() {
-        return false;
     }
 }

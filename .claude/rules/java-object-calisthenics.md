@@ -174,7 +174,7 @@ public class OrderItems {
 
 ### 2.5 一行一个点（推荐）
 
-**原文意图：** `a.getB().getC().doSomething()` 意味着调用方深入了对象的内部结构（违反迪米特法则 / Law of Demeter），任何中间结构变化都会波及所有调用方。
+**原文意图：** `a.getB().getC().doSomething()` 意味着调用方深入了对象的内部结构（违反迪米特法则 / Law of Demeter），任何中间结构变化都会波及所有调用方。功能分配视角（Feature Envy、分层不穿透）见 `java-solid-lod.md` §2.6。
 
 **生产落地：** 禁止跨越领域对象的 getter 链；改为 Tell, Don't Ask —— 在对象上声明意图方法。
 

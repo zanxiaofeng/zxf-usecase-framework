@@ -28,6 +28,7 @@ import com.example.myapp.framework.steps.SpelStepFactory;
 import com.example.myapp.framework.steps.StarterStepFactory;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
 import com.example.myapp.framework.steps.ValidatorStepFactory;
+import com.example.myapp.framework.web.ErrorResponseMapper;
 import com.example.myapp.framework.web.UseCaseRouterFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.BeanFactory;
@@ -319,7 +320,8 @@ public class UseCaseFrameworkAutoConfiguration {
     RouterFunction<ServerResponse> useCaseRouterFunction(UseCaseRegistry registry, UseCaseProperties properties,
                                                          ObjectProvider<ObjectMapper> objectMapperProvider) {
         ObjectMapper objectMapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
-        return new UseCaseRouterFactory(properties.errorMappings(), objectMapper).build(registry);
+        return new UseCaseRouterFactory(new ErrorResponseMapper(properties.errorMappings()), objectMapper)
+                .build(registry);
     }
 
     /**

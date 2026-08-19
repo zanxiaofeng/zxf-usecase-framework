@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.codec.Codec;
+import com.example.myapp.framework.codec.ReversibleCodec;
 import com.example.myapp.framework.core.DataTransformer;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
@@ -11,7 +12,7 @@ import lombok.RequiredArgsConstructor;
  * → as/payload 规则落地。编码与解码仅方向不同，共用本实现。
  *
  * <p>输入为 null 时结果亦为 null（不抛错，由后续步骤决定如何对待）；decoder 的算法可逆性
- * 在装配期由工厂校验（fail-fast）。</p>
+ * 在装配期由工厂校验（fail-fast，类型系统保证 decode 能力存在）。</p>
  */
 @RequiredArgsConstructor
 public final class CodecStep implements DataTransformer {
@@ -27,7 +28,10 @@ public final class CodecStep implements DataTransformer {
         DECODE {
             @Override
             public String apply(Codec codec, String value) {
-                return codec.decode(value);
+                if (codec instanceof ReversibleCodec reversible) {
+                    return reversible.decode(value);
+                }
+                throw new IllegalStateException("unreachable: reversibility validated at assembly");
             }
         };
 

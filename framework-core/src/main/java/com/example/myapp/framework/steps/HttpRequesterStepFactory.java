@@ -48,12 +48,12 @@ public final class HttpRequesterStepFactory implements StepFactory {
         String bodyExpression = config.optionalString("body");
         String as = config.optionalString("as");
 
-        String authScheme = null;
+        AuthHandler authHandler = null;
         Map<String, Object> authOptions = Map.of();
         Map<String, Object> auth = config.mapOrEmpty("auth");
         if (!auth.isEmpty()) {
             Object scheme = auth.get("scheme");
-            authScheme = scheme == null ? null : String.valueOf(scheme);
+            String authScheme = scheme == null ? null : String.valueOf(scheme);
             if (authScheme == null || !authHandlers.containsKey(authScheme)) {
                 throw new UseCaseAssemblyException(
                         "step [%s]: unknown auth scheme '%s', available: %s"
@@ -63,10 +63,11 @@ public final class HttpRequesterStepFactory implements StepFactory {
             if (options instanceof Map<?, ?> optionsMap) {
                 authOptions = (Map<String, Object>) optionsMap;
             }
-            authHandlers.get(authScheme).validate(authOptions);
+            authHandler = authHandlers.get(authScheme);
+            authHandler.validate(authOptions);
         }
 
         return new HttpRequesterStep(name, method, url, uriVariables, headers, bodyExpression,
-                new AuthSpec(authScheme, authOptions, authHandlers), as, restClient, evaluator);
+                new AuthSpec(authHandler, authOptions), as, restClient, evaluator);
     }
 }
