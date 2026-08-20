@@ -9,6 +9,7 @@ import java.util.stream.Stream;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -190,7 +191,7 @@ public class UseCaseFrameworkAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean(name = "eventPublisherStepFactory")
-    StepFactory eventPublisherStepFactory(BeanFactory beanFactory, StepExpressionEvaluator evaluator) {
+    StepFactory eventPublisherStepFactory(ListableBeanFactory beanFactory, StepExpressionEvaluator evaluator) {
         return new EventPublisherStepFactory(beanFactory, evaluator);
     }
 

@@ -2,7 +2,9 @@ package com.example.myapp.unit.framework;
 
 import java.util.List;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
@@ -20,6 +22,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 以及 StepContextHolder 在管道执行期的绑定/恢复。
  */
 class UseCaseInvokerTest {
+
+    private static final String MDC_BIZ_KEY = "biz.businessId";
+
+    @AfterEach
+    void clearMdc() {
+        MDC.clear();
+    }
 
     /** 子用例：payload 追加 "-child"，并向 vars / biz 写入标记 */
     private UseCaseRegistry registryWithChild() {
@@ -117,5 +126,35 @@ class UseCaseInvokerTest {
         new UseCase("parentUc", null, null, List.of(parentStep), false).execute(parent);
 
         assertThat(StepContextHolder.current()).isNull();               // 父管道结束后清空
+    }
+
+    @Test
+    void invokeIsolated_restoresParentMdcAfterReturn() {
+        // 子用例内写 MDC（模拟 starter 输出到日志上下文）：biz 拷贝继承而 MDC 是线程级单例，
+        // 返回时父的 MDC 现场必须恢复，否则父管道后续日志输出子用例的值
+        Step childStep = context -> MDC.put(MDC_BIZ_KEY, "u2");
+        UseCase child = new UseCase("childUc", null, null, List.of(childStep), true);
+        UseCaseInvoker invoker = new UseCaseInvoker(() -> new UseCaseRegistry(List.of(child)));
+
+        StepContext parent = StepContext.standalone();
+        Step parentStep = context -> {
+            MDC.put(MDC_BIZ_KEY, "u1");
+            invoker.invokeIsolated("childUc", "in", context);
+            assertThat(MDC.get(MDC_BIZ_KEY)).isEqualTo("u1");   // 子写入已随返回回滚
+        };
+        new UseCase("parentUc", null, null, List.of(parentStep), false).execute(parent);
+
+        assertThat(MDC.get(MDC_BIZ_KEY)).isEqualTo("u1");
+    }
+
+    @Test
+    void invokeStandalone_clearsMdcWrittenInside() {
+        Step childStep = context -> MDC.put(MDC_BIZ_KEY, "u9");
+        UseCase child = new UseCase("childUc", null, null, List.of(childStep), true);
+        UseCaseInvoker invoker = new UseCaseInvoker(() -> new UseCaseRegistry(List.of(child)));
+
+        invoker.invokeStandalone("childUc", "in");
+
+        assertThat(MDC.get(MDC_BIZ_KEY)).isNull();              // 进入时为空 → 执行后彻底清空
     }
 }

@@ -107,6 +107,7 @@ usecase:
 - 写入 `StepContext` 的 **biz 关键数据区**，后续步骤经 `#biz.businessId` 引用；
 - 非 null 值同步到日志 MDC（键 `biz.<key>`，值剥离控制字符防日志注入），请求结束由 Web 层自动清理，防止线程复用串号；
 - Web 入口在管道执行前自动写入 `traceId`（取 `X-Request-Id` 头并做白名单校验 `[A-Za-z0-9_-]{8,128}`，不合法或缺失时生成 UUID），写入 MDC（键 `traceId`，供 logback `%X{traceId}` 全链路关联）并回填到响应信封 `traceId` 字段。
+- **装配期护栏**：`keys` 不得写保留键 `traceId`（装配即报错）；shared 用例内含 starter 会打 WARN（串联嵌入时共享父上下文，子的 starter 会覆写父管道 biz）。
 
 ## encoder / decoder
 
@@ -148,7 +149,7 @@ usecase:
 |------|-----------|-----------|------------------|
 | 默认（串联） | `input` 缺省 = 父 payload | 成为父 payload | 与父共享同一实例，子的写入对后续步骤可见 |
 | `as: x`（旁路） | `input` 表达式 | 写入 `#vars.x`，父 payload 恢复 | 同上 |
-| `isolate: true` | `input` 表达式 | 按 `as` 规则落点 | **vars 全新**（不污染父）；**biz 拷贝继承**（子可读父的 businessId，但子的修改不回传） |
+| `isolate: true` | `input` 表达式 | 按 `as` 规则落点 | **vars 全新**（不污染父）；**biz 拷贝继承**（子可读父的 businessId，但子的修改不回传）；**MDC 快照恢复**（子内 MDC 写入返回时回滚，不污染父管道日志） |
 
 异常穿透子用例边界：子用例抛出的领域异常原样沿包装链上抛，由父用例所在端点统一映射（如 `UserNotFoundException` → 404）。装配期 fail-fast：`ref` 指向不存在的用例、直接/间接循环引用（A→B→A）、`shared: false` 却缺 endpoint，都会在启动期报错。
 
@@ -287,7 +288,7 @@ usecase:
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core + demo 两模块全量运行（73 个）
+mvn test     # 根目录执行：framework-core + demo 两模块全量运行（100 个）
 ```
 
 - `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装（零容器）；
@@ -298,9 +299,10 @@ mvn test     # 根目录执行：framework-core + demo 两模块全量运行（7
 - `unit/framework/HttpRequesterStepTest`：MockRestServiceServer 验证 URI 模板、认证头、错误分支；
 - `unit/framework/SubUseCaseStepTest`：子用例 input/串联/旁路/as/isolate 数据传递语义（零容器）；
 - `unit/framework/ValidatorStepTest`：expression/schema 双模式、互斥校验、错误码与默认 400、求值失败映射 400；
-- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测；
-- `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义、父 payload 恢复、StepContextHolder 嵌套恢复；
+- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测、starter 保留键（traceId）护栏与 shared-starter WARN；
+- `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义、父 payload 恢复、StepContextHolder 嵌套恢复、isolate/standalone 的 MDC 快照恢复；
 - `unit/framework/ClientCredentialsAuthHandlerTest`：OAuth2 token 缓存命中与过期原子刷新；
 - `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析；
+- `unit/framework/EventPublisherStepFactoryTest`：装配期发布器校验（缺失 / 类型不符 / 多候选无 @Primary fail-fast，@Primary 运行期解析命中）；
 - `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
 - `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点。

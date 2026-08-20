@@ -19,10 +19,12 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.http.HttpMethod;
 
 import com.example.myapp.framework.core.Step;
+import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.UseCase.EndpointSpec;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
+import com.example.myapp.framework.steps.StarterStepFactory;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
 
 /**
@@ -30,7 +32,8 @@ import com.example.myapp.framework.steps.SubUseCaseStepFactory;
  *
  * <p>三遍装配（全部 fail-fast）：</p>
  * <ol>
- *   <li><b>定义校验</b>：id 非空且唯一；非 shared 用例必须有合法 endpoint；steps 非空；</li>
+ *   <li><b>定义校验</b>：id 非空且唯一；非 shared 用例必须有合法 endpoint；steps 非空；
+ *       starter 的 keys 不得写保留 biz 键（{@code traceId}）；</li>
  *   <li><b>子用例引用图</b>：type=usecase 的 step 其 ref 必须指向已定义用例；DFS 检测循环引用；</li>
  *   <li><b>逐 step 构建</b>：ref → Step Bean；type → StepFactory；type=usecase → 子用例 step。</li>
  * </ol>
@@ -43,6 +46,9 @@ import com.example.myapp.framework.steps.SubUseCaseStepFactory;
  */
 @Slf4j
 public final class UseCaseAssembler {
+
+    /** starter 不得写入的 biz 保留键（traceId 由 Web 入口白名单校验后种子化，starter 可写会绕过校验） */
+    private static final Set<String> RESERVED_BIZ_KEYS = Set.of(StepContext.TRACE_ID_KEY);
 
     private final BeanFactory beanFactory;
     private final Map<String, StepFactory> factories;
@@ -63,6 +69,7 @@ public final class UseCaseAssembler {
         Set<String> ids = new LinkedHashSet<>();
         for (UseCaseDefinition definition : definitions) {
             validateUseCase(definition);
+            validateStarterSteps(definition);
             if (!ids.add(definition.id())) {
                 throw new UseCaseAssemblyException("duplicate usecase id: " + definition.id());
             }
@@ -112,6 +119,39 @@ public final class UseCaseAssembler {
         } catch (IllegalArgumentException e) {
             throw new UseCaseAssemblyException(
                     "usecase [%s]: unsupported http method '%s'".formatted(definition.id(), endpoint.method()));
+        }
+    }
+
+    /**
+     * starter 步骤的配置前置校验（类型化 config 绑定在工厂内发生，此处基于原始 config Map）：
+     * keys 命中保留 biz 键（{@code traceId}）→ fail-fast；shared 用例内含 starter → WARN
+     * （串联嵌入时共享上下文，子的 starter 会覆写父管道 biz）。
+     */
+    private void validateStarterSteps(UseCaseDefinition definition) {
+        List<StepDefinition> steps = definition.steps();
+        for (int i = 0; i < steps.size(); i++) {
+            StepDefinition step = steps.get(i);
+            if (!StarterStepFactory.TYPE.equals(step.type())) {
+                continue;
+            }
+            checkReservedBizKeys(definition.id(), i, step);
+            if (definition.isShared()) {
+                log.warn("shared usecase [{}] step #{}: starter 在串联嵌入时会覆写父管道 biz"
+                        + "（若非预期请改用 isolate: true 或移除该 starter）", definition.id(), i);
+            }
+        }
+    }
+
+    private void checkReservedBizKeys(String useCaseId, int index, StepDefinition step) {
+        if (step.config() == null || !(step.config().get("keys") instanceof Map<?, ?> keys)) {
+            return;
+        }
+        for (Object key : keys.keySet()) {
+            if (RESERVED_BIZ_KEYS.contains(String.valueOf(key))) {
+                throw new UseCaseAssemblyException(
+                        "usecase [%s] step #%d: starter must not write reserved biz key '%s'"
+                                .formatted(useCaseId, index, key));
+            }
         }
     }
 

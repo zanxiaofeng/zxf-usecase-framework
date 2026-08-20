@@ -3,7 +3,11 @@ package com.example.myapp.unit.framework;
 import java.util.List;
 import java.util.Map;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 
 import com.example.myapp.framework.assemble.StepDefinition;
@@ -15,6 +19,7 @@ import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SpelStepFactory;
+import com.example.myapp.framework.steps.StarterStepFactory;
 import com.example.myapp.framework.steps.SubUseCaseStep;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
 
@@ -45,6 +50,17 @@ class UseCaseAssemblerTest {
 
     private StepDefinition subStep(String ref) {
         return new StepDefinition("sub", "usecase", ref, Map.of());
+    }
+
+    private StepDefinition starterStep(Map<String, String> keys) {
+        return new StepDefinition("start", "starter", null, Map.of("keys", keys));
+    }
+
+    /** 含 starter 工厂的装配器（starter 步骤需走第三遍构建） */
+    private UseCaseAssembler assemblerWithStarter() {
+        List<StepFactory> withStarter = new java.util.ArrayList<>(factories);
+        withStarter.add(new StarterStepFactory(evaluator));
+        return new UseCaseAssembler(new StaticListableBeanFactory(), withStarter);
     }
 
     @Test
@@ -128,5 +144,37 @@ class UseCaseAssemblerTest {
         assertThatThrownBy(() -> assembler().assemble(List.of(first, second)))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("duplicate usecase id: dup");
+    }
+
+    @Test
+    void starterWritingReservedBizKeyFailsAtAssembly() {
+        // traceId 由 Web 入口白名单校验后种子化，starter 可写会绕过该校验 → 装配期 fail-fast
+        UseCaseDefinition invalid = new UseCaseDefinition("p1", null, true, null,
+                List.of(starterStep(Map.of("traceId", "'hijacked'", "businessId", "'b1'"))));
+        assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("reserved biz key 'traceId'");
+    }
+
+    @Test
+    void sharedUsecaseWithStarterWarnsAtAssembly() {
+        // shared 用例内含 starter：串联嵌入时共享上下文，子的 starter 会覆写父管道 biz → WARN 提示
+        Logger assemblerLogger = (Logger) LoggerFactory.getLogger(UseCaseAssembler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        assemblerLogger.addAppender(appender);
+        try {
+            UseCaseDefinition shared = new UseCaseDefinition("s1", null, true, null,
+                    List.of(starterStep(Map.of("businessId", "'b1'"))));
+            assemblerWithStarter().assemble(List.of(shared));
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> {
+                        assertThat(event.getLevel().toString()).isEqualTo("WARN");
+                        assertThat(event.getFormattedMessage()).contains("s1").contains("覆写父管道 biz");
+                    });
+        } finally {
+            assemblerLogger.detachAppender(appender);
+        }
     }
 }

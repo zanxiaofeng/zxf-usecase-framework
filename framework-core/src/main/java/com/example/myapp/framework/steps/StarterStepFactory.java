@@ -18,16 +18,18 @@ import com.example.myapp.framework.steps.config.StarterConfig;
 @RequiredArgsConstructor
 public final class StarterStepFactory implements StepFactory {
 
+    public static final String TYPE = "starter";
+
     private final StepExpressionEvaluator evaluator;
 
     @Override
     public String type() {
-        return "starter";
+        return TYPE;
     }
 
     @Override
     public Step create(StepDefinition definition) {
         StarterConfig config = StepConfigs.bind(definition, StarterConfig.class);
-        return new StarterStep(definition.nameOr("starter"), new LinkedHashMap<>(config.keys()), evaluator);
+        return new StarterStep(definition.nameOr(TYPE), new LinkedHashMap<>(config.keys()), evaluator);
     }
 }

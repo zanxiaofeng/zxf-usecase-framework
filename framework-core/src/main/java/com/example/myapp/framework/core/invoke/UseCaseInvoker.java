@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 
 import lombok.RequiredArgsConstructor;
 
+import com.example.myapp.framework.core.MdcScopes;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.StepContextHolder;
 import com.example.myapp.framework.core.UseCase;
@@ -79,21 +80,27 @@ public final class UseCaseInvoker {
         return current == null ? invokeStandalone(useCaseId, input) : invokeIsolated(useCaseId, input, current);
     }
 
-    /** 在指定父上下文基础上的隔离调用：vars 全新，biz 拷贝继承（子的修改不回传）。 */
+    /** 在指定父上下文基础上的隔离调用：vars 全新，biz 拷贝继承（子的修改不回传）；MDC 现场返回时恢复。 */
     public Object invokeIsolated(String useCaseId, Object input, StepContext parentContext) {
         UseCase target = registry().require(useCaseId);
-        StepContext childContext = parentContext.newChildContext();
-        childContext.inheritBizFrom(parentContext);
-        childContext.setPayload(input);
-        return target.execute(childContext);
+        // biz 是 Map 拷贝而 MDC 是线程级单例：子管道内 starter 的 MDC 写入须随返回回滚，
+        // 否则父管道后续日志输出子用例的 biz 值
+        return MdcScopes.withRestoration(() -> {
+            StepContext childContext = parentContext.newChildContext();
+            childContext.inheritBizFrom(parentContext);
+            childContext.setPayload(input);
+            return target.execute(childContext);
+        });
     }
 
-    /** 独立调用：全新上下文（无入站请求），自动种子化 traceId（biz 区），管道外场景使用。 */
+    /** 独立调用：全新上下文（无入站请求），自动种子化 traceId（biz 区），管道外场景使用；MDC 现场返回时恢复。 */
     public Object invokeStandalone(String useCaseId, Object input) {
         UseCase target = registry().require(useCaseId);
-        StepContext context = StepContext.standalone();
-        context.putBiz(StepContext.TRACE_ID_KEY, UUID.randomUUID().toString());
-        context.setPayload(input);
-        return target.execute(context);
+        return MdcScopes.withRestoration(() -> {
+            StepContext context = StepContext.standalone();
+            context.putBiz(StepContext.TRACE_ID_KEY, UUID.randomUUID().toString());
+            context.setPayload(input);
+            return target.execute(context);
+        });
     }
 }
