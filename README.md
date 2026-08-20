@@ -8,6 +8,8 @@
 usecase-framework（聚合 POM）
 ├── framework-core     # 框架本体（独立库 jar）：core/assemble/steps/auth/codec/expression/web
 │                      # + AutoConfiguration.imports —— 经 spring-boot 自动配置装配，可单独发布
+├── framework-test     # YAML 用例测试 harness（独立库 jar，业务方 test scope 引用）：
+│                      # UseCaseScenario 场景断言 + RecordingEventPublisher 事件探针
 └── demo               # 演示应用（可执行 jar）：MyAppApplication + application/domain/infrastructure
                        # + application.yml 用例定义 + e2e 测试
 ```
@@ -293,6 +295,24 @@ usecase:
 - **数据流报告**：`usecase.report` 输出各用例 `dataflow: <id>` 段——biz 写入（starter keys）、vars 写入（as 键）、表达式读取（SpEL AST 首段静态分析），供配置审查与新人上手；
 - **dev trace**：`usecase.trace.enabled` 开启后逐条 step 输出 `payload null -> UserDto, vars +[credit], 3 ms` 形态轨迹；关闭时执行路径零开销（无快照、无键集拷贝）。
 
+## YAML 用例测试（framework-test）
+
+配置驱动意味着 **YAML 用例本身就是回归对象**。`framework-test` 模块（业务方以 test scope 引入）提供 `UseCaseScenario`：构造接近真实的 `ServerRequest`（MockHttpServletRequest 打底，path/query/header/body 语义与路由入口一致），经 `StepContext.of` 走真实管道执行，然后断言最终 payload、vars、biz 与已发布事件：
+
+```java
+UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注入二者
+        .request("POST", "/api/v1/user-snapshots")     // 按 method + path 模板定位用例（也可 .useCase("id")）
+        .body("{\"userId\":\"u1\",\"name\":\"alice-snap\"}")
+        .recordingEventsTo(eventRecorder)              // RecordingEventPublisher 探针（@Primary 注册即接管 eventPublisher 步骤）
+        .expectBiz("businessId", "u1")
+        .expectVar("userDto", dto -> ...)
+        .expectPayload(payload -> ...)
+        .expectEventPublished(SnapshotCreatedEvent.class, event -> ...)
+        .run();                                        // 返回 ScenarioResult（payload + 上下文）供进一步断言
+```
+
+与 Web 入口的对齐与差异：执行前种子化 traceId（默认固定值 `scenario-trace`，可覆盖）、执行后清理 MDC；不经过路由与异常→HTTP 映射——管道异常原样从 `run()` 抛出，失败场景用 `assertThatThrownBy(scenario::run)` 断言；expectXxx 断言只在管道成功完成后执行。
+
 ## 扩展点
 
 1. **自定义 step**：`@Component("myStep") class MyStep implements DataTransformer` → YAML `ref: myStep`；
@@ -313,7 +333,7 @@ usecase:
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core + demo 两模块全量运行（122 个）
+mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（135 个）
 ```
 
 - `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装 + 键级数据现场（最内层优先）/ dev trace 开关（零容器）；
@@ -331,4 +351,6 @@ mvn test     # 根目录执行：framework-core + demo 两模块全量运行（1
 - `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析、#payload 别名 WARN 与浅拷贝脱钩；
 - `unit/framework/EventPublisherStepFactoryTest`：装配期发布器校验（缺失 / 类型不符 / 多候选无 @Primary fail-fast，@Primary 运行期解析命中）；
 - `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
-- `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点。
+- `framework/test/UseCaseScenarioTest`（framework-test 模块）：harness 自身语义——请求构造（path/query/header/body）、端点/id 双定位、traceId 种子化与 MDC 清理、payload/vars/biz/事件断言与失败路径；
+- `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点；
+- `e2e/UseCaseScenarioDemoTest`：UseCaseScenario 在真实装配产物上的示范——getUser/getUserByToken/createUserSnapshot 三条管道的 payload/vars/biz/事件断言（RecordingEventPublisher @Primary 探针接管事件发布）。

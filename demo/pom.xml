@@ -45,6 +45,14 @@
             <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- 框架测试 harness：UseCaseScenario 场景断言（Fix 9.4） -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>usecase-framework-test</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -18,6 +18,7 @@
 
     <modules>
         <module>framework-core</module>
+        <module>framework-test</module>
         <module>demo</module>
     </modules>
 

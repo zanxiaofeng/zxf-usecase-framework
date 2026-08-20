@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>usecase-framework</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>usecase-framework-test</artifactId>
+    <name>usecase-framework-test</name>
+    <description>YAML 用例的测试 harness：UseCaseScenario 流畅断言 payload/vars/biz/事件发布（配置即回归对象）</description>
+
+    <dependencies>
+        <!-- 框架本体 -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>usecase-framework-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- MockHttpServletRequest（构造 ServerRequest 走真实管道；harness 消费方运行期需要，compile scope） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+        </dependency>
+
+        <!-- 断言辅助（expectVar/expectBiz/expectEventPublished 的等值断言；harness 消费方运行期需要） -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+        </dependency>
+
+        <!-- 本模块自身测试 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
