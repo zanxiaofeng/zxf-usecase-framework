@@ -1,12 +1,17 @@
 package com.example.myapp.unit.framework;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -117,5 +122,42 @@ class EventPublisherStepTest {
         assertThatThrownBy(() -> factory.create(new StepDefinition("publish", "eventPublisher", null, Map.of())))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("event");
+    }
+
+    @Test
+    void mapEventIsShallowCopiedBeforePublish() {
+        // Fix 8a：Map 事件浅拷贝脱钩顶层——发布后修改源 Map 不影响已发布事件（afterCommit 场景）
+        Step step = step("#payload");
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("id", "e-5");
+        StepContext context = contextWithPayload(source);
+
+        step.execute(context);
+        source.put("id", "tampered");   // 模拟后续步骤原地修改源
+
+        assertThat(published).hasSize(1);
+        assertThat(published.get(0)).isNotSameAs(source);
+        assertThat(((Map<?, ?>) published.get(0)).get("id")).isEqualTo("e-5");   // 浅拷贝脱钩：源改写不影响事件顶层
+    }
+
+    @Test
+    void eventAliasingPayloadTriggersWarn() {
+        // 事件表达式直接引用 #payload → WARN 提示（顶层已浅拷贝隔离，嵌套仍共享）
+        Logger stepLogger = (Logger) LoggerFactory.getLogger(EventPublisherStep.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        stepLogger.addAppender(appender);
+        try {
+            Step step = step("#payload");
+            step.execute(contextWithPayload(Map.of("id", "e-6")));
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> {
+                        assertThat(event.getLevel().toString()).isEqualTo("WARN");
+                        assertThat(event.getFormattedMessage()).contains("#payload");
+                    });
+        } finally {
+            stepLogger.detachAppender(appender);
+        }
     }
 }

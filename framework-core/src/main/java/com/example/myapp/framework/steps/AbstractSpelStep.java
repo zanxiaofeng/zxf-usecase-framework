@@ -31,7 +31,10 @@ abstract class AbstractSpelStep implements Step {
 
     @Override
     public void execute(StepContext context) {
-        Object value = evaluator.evaluate(expression, context);
+        Object value = evaluator.evaluate(expression, context, name);
+        if (value == null && as == null && overwritePayloadWithNull()) {
+            onNullOverwrite();
+        }
         store(context, value);
     }
 
@@ -42,5 +45,9 @@ abstract class AbstractSpelStep implements Step {
     /** 表达式结果为 null 时是否覆盖 payload。DataSaver 返回 false（void 方法不清空数据）。 */
     protected boolean overwritePayloadWithNull() {
         return true;
+    }
+
+    /** 表达式为 null 且即将清空 payload 时的钩子（默认无操作；transformer 借此打 WARN 提示 onNull: keep）。 */
+    protected void onNullOverwrite() {
     }
 }

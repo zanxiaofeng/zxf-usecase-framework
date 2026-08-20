@@ -7,12 +7,14 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.EvaluationException;
 import org.springframework.expression.Expression;
 import org.springframework.expression.common.TemplateParserContext;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.StepValidationException;
 
 /**
  * 步骤配置中的表达式求值器（SpEL）。
@@ -55,6 +57,21 @@ public final class StepExpressionEvaluator {
     }
 
     /**
+     * 带 step 名的求值收口（内置 step 统一入口）：SpEL 自身求值失败（属性访问/类型错误等）
+     * 包装为 400 语义的 {@link StepValidationException} 并附 step 名——多为「输入不满足表达式前提」
+     * （如非 JSON 文本体上取 {@code #body.xxx}），属客户端可修正的 4xx 而非系统故障。
+     * Bean 方法抛出的领域异常不经 SpEL 包装、原样传播，仍走领域异常映射。
+     */
+    public Object evaluate(String rawExpression, StepContext context, String stepName) {
+        try {
+            return evaluate(rawExpression, context);
+        } catch (EvaluationException e) {
+            throw new StepValidationException(StepValidationException.DEFAULT_CODE,
+                    "step [%s] expression evaluation failed: %s".formatted(stepName, e.getMessage()));
+        }
+    }
+
+    /**
      * 智能求值（header 值、uriVariable 值等内嵌场景使用）：
      * <ul>
      *   <li>含 {@code #{...}} → 模板拼接，如 {@code "Bearer #{vars.token}"}</li>
@@ -76,6 +93,16 @@ public final class StepExpressionEvaluator {
             return evaluate(trimmed, context);
         }
         return value;
+    }
+
+    /** {@link #resolve} 的 step 名收口变体：求值失败同样映射 400 并附 step 名。 */
+    public Object resolve(String value, StepContext context, String stepName) {
+        try {
+            return resolve(value, context);
+        } catch (EvaluationException e) {
+            throw new StepValidationException(StepValidationException.DEFAULT_CODE,
+                    "step [%s] expression evaluation failed: %s".formatted(stepName, e.getMessage()));
+        }
     }
 
     public EvaluationContext newEvaluationContext(StepContext context) {

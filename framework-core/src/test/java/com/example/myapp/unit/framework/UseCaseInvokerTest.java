@@ -11,10 +11,12 @@ import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.StepContextHolder;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.exception.UseCaseResultTypeException;
 import com.example.myapp.framework.core.invoke.AbstractUseCaseClient;
 import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * UseCaseInvoker（Java 代码调用子用例）三种语义：
@@ -156,5 +158,50 @@ class UseCaseInvokerTest {
         invoker.invokeStandalone("childUc", "in");
 
         assertThat(MDC.get(MDC_BIZ_KEY)).isNull();              // 进入时为空 → 执行后彻底清空
+    }
+
+    @Test
+    void invokeSharedOutsidePipelineFailsFast() {
+        // 严格共享变体：管道外调用立即报错（而非静默退化为独立语义、traceId 断链）
+        UseCaseInvoker invoker = invokerWithChild();
+        assertThat(StepContextHolder.current()).isNull();
+
+        assertThatThrownBy(() -> invoker.invokeShared("childUc", "u1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("invokeShared")
+                .hasMessageContaining("invokeStandalone");
+    }
+
+    @Test
+    void invokeSharedInsidePipelineSharesContext() {
+        UseCaseInvoker invoker = invokerWithChild();
+        StepContext parent = StepContext.standalone();
+        parent.setPayload("P1");
+        parent.putBiz("businessId", "u1");
+
+        Object[] resultHolder = new Object[1];
+        Step parentStep = context -> resultHolder[0] = invoker.invokeShared("childUc", context.getBiz("businessId"));
+        new UseCase("parentUc", null, null, List.of(parentStep), false).execute(parent);
+
+        assertThat(resultHolder[0]).isEqualTo("u1-child");
+        assertThat(parent.getBiz("childKey")).isEqualTo("k");   // 共享语义与 invoke 一致
+    }
+
+    @Test
+    void typedClientReportsResultTypeMismatch() {
+        // Fix 9.1：子用例末步输出与客户端声明类型不符 → 语义化异常（替代裸 ClassCastException）
+        StringChildClient client = new StringChildClient(invokerWithChild()) {
+        };
+        // childUc 返回 String "u7-child"；声明 Integer 类型的客户端应报类型错
+        AbstractUseCaseClient<String, Integer> wrongTyped =
+                new AbstractUseCaseClient<String, Integer>(invokerWithChild(), "childUc", Integer.class) {
+                };
+
+        assertThat(client.invokeStandalone("u7")).isEqualTo("u7-child");
+        assertThatThrownBy(() -> wrongTyped.invokeStandalone("u7"))
+                .isInstanceOf(UseCaseResultTypeException.class)
+                .hasMessageContaining("childUc")
+                .hasMessageContaining("Integer")
+                .hasMessageContaining("String");
     }
 }

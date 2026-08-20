@@ -23,6 +23,7 @@ import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.UseCase.EndpointSpec;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.UseCaseTrace;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.steps.StarterStepFactory;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
@@ -30,13 +31,16 @@ import com.example.myapp.framework.steps.SubUseCaseStepFactory;
 /**
  * 用例装配器：启动期把 {@code usecase.definitions} 配置翻译成 {@link UseCaseRegistry}。
  *
- * <p>三遍装配（全部 fail-fast）：</p>
+ * <p>三遍装配（定义校验全部 fail-fast，键级分析只 WARN）：</p>
  * <ol>
  *   <li><b>定义校验</b>：id 非空且唯一；非 shared 用例必须有合法 endpoint；steps 非空；
  *       starter 的 keys 不得写保留 biz 键（{@code traceId}）；</li>
- *   <li><b>子用例引用图</b>：type=usecase 的 step 其 ref 必须指向已定义用例；DFS 检测循环引用；</li>
+ *   <li><b>子用例引用图</b>：type=usecase 的 step 其 ref 必须指向已定义用例；DFS 检测循环引用；
+ *       随后基于已无环的引用图做 vars 键静态分析（{@link VarsWriteIndex}）——as 键多写入点打 WARN；</li>
  *   <li><b>逐 step 构建</b>：ref → Step Bean；type → StepFactory；type=usecase → 子用例 step。</li>
  * </ol>
+ *
+ * <p>装配完成后按 {@code usecase.report}（默认开）输出每用例数据流报告（{@link DataflowReporter}）。</p>
  *
  * <p>step 的 ref/type 规则：</p>
  * <ul>
@@ -52,9 +56,19 @@ public final class UseCaseAssembler {
 
     private final BeanFactory beanFactory;
     private final Map<String, StepFactory> factories;
+    private final UseCaseTrace trace;
+    private final boolean reportEnabled;
 
+    /** 便捷构造：无 dev trace、无数据流报告（测试与手工装配用） */
     public UseCaseAssembler(BeanFactory beanFactory, List<StepFactory> factoryList) {
+        this(beanFactory, factoryList, UseCaseTrace.DISABLED, false);
+    }
+
+    public UseCaseAssembler(BeanFactory beanFactory, List<StepFactory> factoryList,
+                            UseCaseTrace trace, boolean reportEnabled) {
         this.beanFactory = beanFactory;
+        this.trace = trace;
+        this.reportEnabled = reportEnabled;
         Map<String, StepFactory> map = new LinkedHashMap<>();
         for (StepFactory factory : factoryList) {
             if (map.put(factory.type(), factory) != null) {
@@ -76,6 +90,9 @@ public final class UseCaseAssembler {
         }
         // 第二遍：子用例引用存在性 + 循环引用检测
         detectSubUseCaseCycles(buildSubUseCaseRefGraph(definitions, ids));
+        // 第二遍半：vars 键静态分析（引用图已无环）——as 键碰撞 WARN
+        VarsWriteIndex writeIndex = new VarsWriteIndex(definitions);
+        warnVarsKeyCollisions(definitions, writeIndex);
         // 第三遍：构建
         List<UseCase> assembled = new ArrayList<>();
         for (UseCaseDefinition definition : definitions) {
@@ -90,11 +107,30 @@ public final class UseCaseAssembler {
                     : new EndpointSpec(HttpMethod.valueOf(endpoint.method().toUpperCase(Locale.ROOT)),
                             endpoint.path(), endpoint.statusOrDefault());
             assembled.add(new UseCase(definition.id(), definition.description(), endpointSpec, List.copyOf(steps),
-                    definition.isShared()));
+                    definition.isShared(), trace));
         }
         UseCaseRegistry registry = new UseCaseRegistry(assembled);
         log.info("assembled {} usecase(s) from configuration 'usecase.definitions'", registry.size());
+        if (reportEnabled) {
+            DataflowReporter.render(definitions, writeIndex).forEach(line -> log.info("{}", line));
+        }
         return registry;
+    }
+
+    /**
+     * vars 键静态碰撞检测（Fix 5）：同一键存在多个写入点 → WARN。
+     * 只 WARN 不 fail（存在有意覆盖的合法用法）；静态可见范围仅声明式 as 键（文案已标注）。
+     */
+    private void warnVarsKeyCollisions(List<UseCaseDefinition> definitions, VarsWriteIndex writeIndex) {
+        for (UseCaseDefinition definition : definitions) {
+            writeIndex.writersOf(definition.id()).forEach((key, producers) -> {
+                if (producers.size() > 1) {
+                    log.warn("usecase [{}]: vars key '{}' has {} writers {} —— 若非有意覆盖请改名"
+                                    + "（静态可见范围：声明式 as 键；自定义 step 的运行期 vars 写入不在其列）",
+                            definition.id(), key, producers.size(), producers);
+                }
+            });
+        }
     }
 
     private void validateUseCase(UseCaseDefinition definition) {

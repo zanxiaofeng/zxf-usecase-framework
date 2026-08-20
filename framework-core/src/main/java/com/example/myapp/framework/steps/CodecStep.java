@@ -53,7 +53,7 @@ public final class CodecStep implements DataTransformer {
 
     @Override
     public void execute(StepContext context) {
-        Object source = evaluator.evaluate(sourceExpression, context);
+        Object source = evaluator.evaluate(sourceExpression, context, name);
         String result = source == null ? null : direction.apply(codec, String.valueOf(source));
         context.storeResult(result, as, true);
     }

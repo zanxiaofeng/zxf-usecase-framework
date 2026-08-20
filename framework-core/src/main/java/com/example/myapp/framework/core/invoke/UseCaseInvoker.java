@@ -4,6 +4,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.example.myapp.framework.core.MdcScopes;
 import com.example.myapp.framework.core.StepContext;
@@ -36,6 +37,7 @@ import com.example.myapp.framework.core.UseCaseRegistry;
  * registry 会形成 Bean 创建循环；延迟解析（首次调用时解析并缓存）切断该循环。</p>
  */
 @RequiredArgsConstructor
+@Slf4j
 public final class UseCaseInvoker {
 
     private final Supplier<UseCaseRegistry> registrySupplier;
@@ -59,7 +61,27 @@ public final class UseCaseInvoker {
      */
     public Object invoke(String useCaseId, Object input) {
         StepContext current = StepContextHolder.current();
-        return current == null ? invokeStandalone(useCaseId, input) : invoke(useCaseId, input, current);
+        if (current == null) {
+            // 静默退化会把「异步边界丢失 ThreadLocal」误当正常独立调用（traceId/biz 断链），留 DEBUG 痕迹便于排查
+            log.debug("invoke [{}] outside pipeline: standalone semantics, traceId 不继承", useCaseId);
+            return invokeStandalone(useCaseId, input);
+        }
+        return invoke(useCaseId, input, current);
+    }
+
+    /**
+     * 严格共享调用：要求当前线程处于管道内，否则抛 IllegalStateException。
+     * 异步边界（@Async / CompletableFuture / 虚拟线程切换）ThreadLocal 不随线程迁移——
+     * 跨边界请显式使用 {@link #invokeStandalone}，并把 traceId 与必要 biz 键作为 input 显式传入。
+     */
+    public Object invokeShared(String useCaseId, Object input) {
+        StepContext current = StepContextHolder.current();
+        if (current == null) {
+            throw new IllegalStateException(
+                    "invokeShared requires a pipeline context (no StepContext on current thread); "
+                            + "across async boundaries use invokeStandalone and pass traceId explicitly");
+        }
+        return invoke(useCaseId, input, current);
     }
 
     /** 在指定父上下文中共享调用：vars/biz 互通，父 payload 执行后恢复。 */

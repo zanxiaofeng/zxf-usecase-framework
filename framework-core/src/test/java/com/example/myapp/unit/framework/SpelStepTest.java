@@ -8,12 +8,15 @@ import org.springframework.context.support.StaticApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
 import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.exception.StepValidationException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SpelDataLoaderStep;
 import com.example.myapp.framework.steps.SpelDataSaverStep;
 import com.example.myapp.framework.steps.SpelDataTransformerStep;
+import com.example.myapp.framework.steps.config.SpelStepConfig.OnNull;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * SpEL 内置步骤语义：@bean 引用、#path/#payload/#vars 变量、as 旁路输出、saver 的 null 保护。
@@ -69,7 +72,7 @@ class SpelStepTest {
     @Test
     void transformerReadsPayloadAndVars() {
         SpelDataTransformerStep step = new SpelDataTransformerStep(
-                "merge", "#payload + '|' + #vars.side", null, evaluator);
+                "merge", "#payload + '|' + #vars.side", null, OnNull.OVERWRITE, evaluator);
         StepContext context = newContext();
         context.setPayload("main");
         context.putVar("side", "extra");
@@ -77,6 +80,40 @@ class SpelStepTest {
         step.execute(context);
 
         assertThat(context.getPayload()).isEqualTo("main|extra");
+    }
+
+    @Test
+    void transformerNullClearsPayloadWithWarnByDefault() {
+        SpelDataTransformerStep step = new SpelDataTransformerStep("pick", "null", null, OnNull.OVERWRITE, evaluator);
+        StepContext context = newContext();
+        context.setPayload("doomed");
+
+        step.execute(context);
+
+        assertThat(context.getPayload()).isNull();
+    }
+
+    @Test
+    void transformerNullKeepsPayloadWhenOnNullKeep() {
+        SpelDataTransformerStep step = new SpelDataTransformerStep("pick", "null", null, OnNull.KEEP, evaluator);
+        StepContext context = newContext();
+        context.setPayload("keep-me");
+
+        step.execute(context);
+
+        assertThat(context.getPayload()).isEqualTo("keep-me");
+    }
+
+    @Test
+    void evaluationFailureMapsTo400WithStepName() {
+        // 统一求值收口：SpEL 求值失败（#vars 缺失键上取属性）映射 400 语义并附 step 名
+        SpelDataLoaderStep step = new SpelDataLoaderStep("loadCredit", "#vars.credit.score", null, evaluator);
+        StepContext context = newContext();
+
+        assertThatThrownBy(() -> step.execute(context))
+                .isInstanceOf(StepValidationException.class)
+                .hasMessageContaining("loadCredit")
+                .hasMessageContaining("evaluation failed");
     }
 
     @Test

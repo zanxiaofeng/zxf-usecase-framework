@@ -54,7 +54,7 @@ public final class LoggingStep implements Step {
 
         Object raw = messageTemplate == null
                 ? context.getPayload()
-                : evaluator.resolve(messageTemplate, context);
+                : evaluator.resolve(messageTemplate, context, name);
         String rendered = String.valueOf(raw);
         log.atLevel(level).log(rendered);
     }

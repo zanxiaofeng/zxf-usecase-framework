@@ -34,9 +34,10 @@ public final class SpelStepFactory implements StepFactory {
         SpelStepConfig config = StepConfigs.bind(definition, SpelStepConfig.class);
         String name = definition.nameOr(type);
         return switch (role) {
-            case LOADER -> new SpelDataLoaderStep(name, config.expression(), config.as(), evaluator);
-            case TRANSFORMER -> new SpelDataTransformerStep(name, config.expression(), config.as(), evaluator);
-            case SAVER -> new SpelDataSaverStep(name, config.expression(), config.as(), evaluator);
+            case LOADER -> new SpelDataLoaderStep(name, config.getExpression(), config.getAs(), evaluator);
+            case TRANSFORMER -> new SpelDataTransformerStep(name, config.getExpression(), config.getAs(),
+                    config.getOnNull(), evaluator);
+            case SAVER -> new SpelDataSaverStep(name, config.getExpression(), config.getAs(), evaluator);
         };
     }
 }

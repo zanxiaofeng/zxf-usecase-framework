@@ -80,7 +80,7 @@ usecase:
 |------|---------|------|---------|
 | `starter` | Step | 用例开始提取 businessId 等关键标识 → biz 关键数据区（+MDC） | `keys`（键→表达式 map） |
 | `dataLoader` | DataLoader | 出端口读数据 → payload | `expression`, `as` |
-| `dataTransformer` | DataTransformer | payload → payload | `expression`, `as` |
+| `dataTransformer` | DataTransformer | payload → payload（表达式为 null 默认清空并 WARN） | `expression`, `as`, `onNull`（`keep` 保留原 payload） |
 | `httpRequester` | HttpRequester | 调用外部 HTTP | `method/url/uriVariables/headers/body/auth/as` |
 | `logging` | Step | 管道任意位置输出日志（不改数据） | `level`, `message`（#{} 模板） |
 | `encoder` | DataTransformer | 编码/摘要（base64/base64url/url/hex/md5/sha256；数据变换特例） | `algorithm`, `source`, `as` |
@@ -88,7 +88,7 @@ usecase:
 | `dataSaver` | DataSaver | payload → 出端口 | `expression`（返回 null 保留 payload）, `as` |
 | `validator` | Step | 入口校验（schema / 函数式，二选一） | `expression` 或 `schema`, `target`, `message`, `errorCode` |
 | `usecase` | Step | 嵌入 shared 用例作为子用例 | `ref`=目标用例 id, `input`, `as`, `isolate` |
-| `eventPublisher` | Step | 发布领域事件（活动事务内 afterCommit、提交后才外发，回滚不发布；无事务立即发布） | `event`（SpEL 构造事件，必填）, `publisher`（Bean 名，缺省取唯一实现） |
+| `eventPublisher` | Step | 发布领域事件（活动事务内 afterCommit、提交后才外发，回滚不发布；无事务立即发布） | `event`（SpEL 构造事件，必填）, `publisher`（Bean 名，缺省取唯一实现，装配期校验存在性/唯一性/@Primary） |
 | 自定义 | 命中主数据流语义时实现对应角色接口，否则实现 Step | 任意逻辑 | `ref: beanName` |
 
 ## starter 与关键数据区（biz）
@@ -161,9 +161,12 @@ shared 用例不仅能在 YAML 里被 `type: usecase` 嵌入，也能被任意 J
 
 | 方法 | 语义 |
 |------|------|
-| `invoke(id, input)` | 管道内共享当前上下文（vars/biz 互通、traceId 继承），**父 payload 自动恢复**；管道外退化为独立调用 |
-| `invokeIsolated(id, input)` | 隔离：子用例 vars 全新、biz 拷贝继承（子的修改不回传） |
+| `invoke(id, input)` | 管道内共享当前上下文（vars/biz 互通、traceId 继承），**父 payload 自动恢复**；管道外退化为独立调用（打 DEBUG 痕迹） |
+| `invokeShared(id, input)` | 严格共享：要求管道内，管道外立即抛 `IllegalStateException`（异步边界 ThreadLocal 丢失时不会静默断链） |
+| `invokeIsolated(id, input)` | 隔离：子用例 vars 全新、biz 拷贝继承（子的修改不回传）、MDC 快照恢复 |
 | `invokeStandalone(id, input)` | 独立：全新上下文 + 空请求抽象，自动种子化 traceId（调度任务/消息消费等管道外场景） |
+
+> **异步边界**（@Async / CompletableFuture / 虚拟线程切换）：ThreadLocal 不随线程迁移，共享语义必然失效——跨边界显式用 `invokeStandalone`，把 traceId 与必要 biz 键作为 input 显式传入。类型化客户端结果与声明类型不符时抛 `UseCaseResultTypeException`（指明用例 id 与期望/实际类型），替代裸 `ClassCastException`。
 
 **类型化客户端基类 `AbstractUseCaseClient<I, O>`**（推荐）：为每个 shared 用例声明一个客户端，业务代码像普通方法一样调用：
 
@@ -264,6 +267,8 @@ usecase:
 ```
 
 - 领域/框架异常（实现 `ErrorCoded` 或提供 `getErrorCode()`）：状态码按 **配置 → `@ResponseStatus` → `ErrorCoded.defaultHttpStatus()`（如校验失败默认 400）→ 500** 解析，<500 透传业务消息，≥500 固定文案；
+- 内置 step 的 SpEL **求值失败**统一收口为 400（消息附 step 名与求值错误）；Bean 方法抛出的领域异常不经 SpEL 包装，原样传播走领域映射；
+- 失败 WARN/ERROR 日志附带**键级数据现场**（payload 类型 + vars/biz 键名，不带值，防 PII 入日志；嵌套子用例取最内层现场）；
 - 请求体 JSON 语法错误 → 400 `BAD_REQUEST`（明确报错，而非静默置 null 导致误导性 schema 明细；空体仍为 null，非 JSON 内容类型按纯文本处理）；
 - 下游 HTTP 失败 / 连接超时 → 502 `DOWNSTREAM_ERROR`；
 - 兜底 → 500 `INTERNAL_ERROR`，绝不回显内部异常消息。
@@ -274,35 +279,56 @@ usecase:
 
 > RouterFunction `onError` 之外的异常（Filter / 容器层 / 无匹配路由 404）会落到 Boot 默认 `/error` 端点；demo 已配置 `server.error.include-message/stacktrace/binding-errors: never` 关闭信息泄露。
 
+## 排错与观测
+
+```yaml
+usecase:
+  report: true            # 默认开：启动期输出每用例数据流报告（biz/vars 的静态读写视图，仅日志）
+  trace:
+    enabled: false        # 默认关：开启后每步 INFO 轨迹（payload 类型迁移、新增 vars 键、耗时）
+    include-values: false # 默认关：显式二次开启才输出值快照（截断 256 字符，防大对象/敏感值）
+```
+
+- **装配期 as 键碰撞 WARN**：同一 vars 键存在多个声明式写入点（含串联子用例合并，写入点带 `childId.` 前缀）时启动期打 WARN——只 WARN 不 fail（存在有意覆盖的合法用法）；静态可见范围仅声明式 `as` 键，自定义 step 的运行期写入不在其列；
+- **数据流报告**：`usecase.report` 输出各用例 `dataflow: <id>` 段——biz 写入（starter keys）、vars 写入（as 键）、表达式读取（SpEL AST 首段静态分析），供配置审查与新人上手；
+- **dev trace**：`usecase.trace.enabled` 开启后逐条 step 输出 `payload null -> UserDto, vars +[credit], 3 ms` 形态轨迹；关闭时执行路径零开销（无快照、无键集拷贝）。
+
 ## 扩展点
 
 1. **自定义 step**：`@Component("myStep") class MyStep implements DataTransformer` → YAML `ref: myStep`；
 2. **自定义 step 类型**：实现 `StepFactory`（`type()` 返回新类型名）注册为 Bean → YAML `type: myType`；
 3. **自定义认证**：实现 `AuthHandler` 注册为 Bean（同名 scheme 覆盖内置）；
 4. **自定义编解码算法**：实现 `Codec` 注册为 Bean，`algorithm()` 即算法名；
-5. **事件发布**：实现 `EventPublisher` 注册为 Bean（Kafka / 事务性发件箱 / webhook……）；事务时机（afterCommit）由框架的 eventPublisher 步骤统一保障，实现方只管真实外发（建议幂等 + 自行重试）；
+5. **事件发布**：实现 `EventPublisher` 注册为 Bean（Kafka / 事务性发件箱 / webhook……）；事务时机（afterCommit）由框架的 eventPublisher 步骤统一保障，实现方只管真实外发（建议幂等 + 自行重试）。别名防护：事件表达式直接引用 `#payload` 会打 WARN，Map/List 事件发布前浅拷贝脱钩顶层引用（嵌套结构仍共享——构造全新事件对象是最稳妥写法）；
 6. **覆盖 RestClient**：定义名为 `useCaseRestClient` 的 Bean（自定义超时/拦截器/代理）；
 7. **替换任意内置 Bean**：自动配置的内置 Bean 均带 `@ConditionalOnMissingBean`——定义**同名 Bean**（如 `dataLoaderStepFactory`、`useCaseRestClient`）即整体替换内置实现；`StepExpressionEvaluator` / `UseCaseRegistry` / `UseCaseInvoker` / `ClientCredentialsTokenSupplier` 按**类型**判断（任意 Bean 名均可替换）。内置 AuthHandler / Codec 非独立 Bean，覆盖走第 3、4 条的 scheme / algorithm 机制；
 8. **非 Web 应用**：路由绑定仅 Servlet Web 环境装配（`@ConditionalOnWebApplication`）；非 Web 项目引入 framework-core 时管道装配（Registry / UseCaseInvoker / StepFactory）仍然可用，经 `UseCaseInvoker.invokeStandalone` 在管道外编程调用用例（无入站请求，上下文经 `StepContext.standalone()` 创建）。`usecase.definitions` 为空时应用正常启动（空路由，不绑定任何端点）。
 
+**自定义 step 数据纪律**（payload / vars / biz 均为引用传递，遵守以下约定避免跨步骤污染）：
+
+- transformer / 自定义 step **产出新对象**，不原地修改 payload 与 `#body`（原地改 Map 会污染后续所有 `#body.xxx` 读取与 afterCommit 才发出的事件）；
+- 不持有 `StepContext` 引用到步骤之外（事件、回调场景先取值再脱钩）；
+- 写 biz 只写业务标识键；保留键 `traceId` 由 Web 入口种子化，starter 写入会在装配期被拒绝。
+
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core + demo 两模块全量运行（100 个）
+mvn test     # 根目录执行：framework-core + demo 两模块全量运行（122 个）
 ```
 
-- `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装（零容器）；
-- `unit/framework/SpelStepTest`：SpEL 变量、`as` 旁路、saver null 保护（零容器）；
+- `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装 + 键级数据现场（最内层优先）/ dev trace 开关（零容器）；
+- `unit/framework/SpelStepTest`：SpEL 变量、`as` 旁路、saver null 保护、transformer `onNull: keep` 与默认清空 WARN、求值失败 400 收口（零容器）；
+- `unit/framework/ExpressionInspectorTest`：SpEL AST 静态读取分析（变量/根属性/模板/索引器/字面量）；
 - `unit/framework/StarterStepTest`：biz 关键数据区 + MDC 同步（含控制字符净化）、keys 必填校验；
 - `unit/framework/CodecStepTest`：编解码互逆、单向摘要、decoder 可逆性装配期校验；
 - `unit/framework/LoggingStepTest`：消息模板渲染、级别路由（logback ListAppender 断言）；
 - `unit/framework/HttpRequesterStepTest`：MockRestServiceServer 验证 URI 模板、认证头、错误分支；
 - `unit/framework/SubUseCaseStepTest`：子用例 input/串联/旁路/as/isolate 数据传递语义（零容器）；
 - `unit/framework/ValidatorStepTest`：expression/schema 双模式、互斥校验、错误码与默认 400、求值失败映射 400；
-- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测、starter 保留键（traceId）护栏与 shared-starter WARN；
-- `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义、父 payload 恢复、StepContextHolder 嵌套恢复、isolate/standalone 的 MDC 快照恢复；
+- `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测、starter 保留键（traceId）护栏与 shared-starter WARN、as 键碰撞 WARN（含串联合并与 isolate 豁免）、数据流报告输出；
+- `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义 + invokeShared 严格变体、父 payload 恢复、StepContextHolder 嵌套恢复、isolate/standalone 的 MDC 快照恢复、结果类型不匹配显式报错；
 - `unit/framework/ClientCredentialsAuthHandlerTest`：OAuth2 token 缓存命中与过期原子刷新；
-- `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析；
+- `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析、#payload 别名 WARN 与浅拷贝脱钩；
 - `unit/framework/EventPublisherStepFactoryTest`：装配期发布器校验（缺失 / 类型不符 / 多候选无 @Primary fail-fast，@Primary 运行期解析命中）；
 - `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
 - `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点。

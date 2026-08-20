@@ -71,7 +71,7 @@ public final class HttpRequesterStep implements HttpRequester {
         });
         authSpec.apply(request);
         if (bodyExpression != null) {
-            request.body(evaluator.evaluate(bodyExpression, context));
+            request.body(evaluator.evaluate(bodyExpression, context, name));
         }
         log.debug("http step [{}] {} {}", name, method, url);
         Object result = request.exchange((req, res) -> {
@@ -96,7 +96,7 @@ public final class HttpRequesterStep implements HttpRequester {
         }
         Map<String, Object> resolved = new LinkedHashMap<>();
         source.forEach((key, value) ->
-                resolved.put(key, value instanceof String text ? evaluator.resolve(text, context) : value));
+                resolved.put(key, value instanceof String text ? evaluator.resolve(text, context, name) : value));
         return resolved;
     }
 

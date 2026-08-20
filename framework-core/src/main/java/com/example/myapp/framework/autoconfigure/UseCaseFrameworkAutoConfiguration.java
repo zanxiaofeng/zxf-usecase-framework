@@ -40,6 +40,7 @@ import com.example.myapp.framework.codec.HexCodec;
 import com.example.myapp.framework.codec.UrlCodec;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.UseCaseTrace;
 import com.example.myapp.framework.core.invoke.UseCaseInvoker;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.http.RestClients;
@@ -247,7 +248,10 @@ public class UseCaseFrameworkAutoConfiguration {
     @ConditionalOnMissingBean(UseCaseRegistry.class)
     UseCaseRegistry useCaseRegistry(UseCaseProperties properties, BeanFactory beanFactory,
                                     List<StepFactory> stepFactories) {
-        return new UseCaseAssembler(beanFactory, stepFactories).assemble(properties.definitions());
+        UseCaseProperties.Trace trace = properties.trace();
+        return new UseCaseAssembler(beanFactory, stepFactories,
+                new UseCaseTrace(trace.enabled(), trace.includeValues()), properties.report())
+                .assemble(properties.definitions());
     }
 
     /**

@@ -16,6 +16,7 @@ import com.example.myapp.framework.assemble.UseCaseAssembler;
 import com.example.myapp.framework.assemble.UseCaseDefinition;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.UseCaseTrace;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.SpelStepFactory;
@@ -58,9 +59,7 @@ class UseCaseAssemblerTest {
 
     /** 含 starter 工厂的装配器（starter 步骤需走第三遍构建） */
     private UseCaseAssembler assemblerWithStarter() {
-        List<StepFactory> withStarter = new java.util.ArrayList<>(factories);
-        withStarter.add(new StarterStepFactory(evaluator));
-        return new UseCaseAssembler(new StaticListableBeanFactory(), withStarter);
+        return new UseCaseAssembler(new StaticListableBeanFactory(), assemblerWithStarterFactories());
     }
 
     @Test
@@ -176,5 +175,112 @@ class UseCaseAssemblerTest {
         } finally {
             assemblerLogger.detachAppender(appender);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Fix 5/6：vars 键静态分析（as 碰撞 WARN + 数据流报告）
+    // ------------------------------------------------------------------
+
+    private StepDefinition loadAsStep(String name, String as) {
+        return new StepDefinition(name, "dataLoader", null, Map.of("expression", "'x'", "as", as));
+    }
+
+    private ListAppender<ILoggingEvent> attachAssemblerAppender() {
+        Logger assemblerLogger = (Logger) LoggerFactory.getLogger(UseCaseAssembler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        assemblerLogger.addAppender(appender);
+        return appender;
+    }
+
+    @Test
+    void duplicateAsKeyWithinUsecaseWarns() {
+        ListAppender<ILoggingEvent> appender = attachAssemblerAppender();
+        Logger assemblerLogger = (Logger) LoggerFactory.getLogger(UseCaseAssembler.class);
+        try {
+            UseCaseDefinition definition = new UseCaseDefinition("p1", null, true, null,
+                    List.of(loadAsStep("fetchCredit", "credit"), loadAsStep("reScore", "credit")));
+            assembler().assemble(List.of(definition));
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> {
+                        assertThat(event.getLevel().toString()).isEqualTo("WARN");
+                        assertThat(event.getFormattedMessage())
+                                .contains("vars key 'credit'").contains("fetchCredit").contains("reScore")
+                                .contains("静态可见范围");
+                    });
+        } finally {
+            assemblerLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void asCollisionViaChainedSubUsecaseWarns() {
+        // 串联（非 isolate）子用例共享父 vars：子内 as 键与父管道撞名 → WARN（带 childId. 前缀定位）
+        ListAppender<ILoggingEvent> appender = attachAssemblerAppender();
+        Logger assemblerLogger = (Logger) LoggerFactory.getLogger(UseCaseAssembler.class);
+        try {
+            UseCaseDefinition child = new UseCaseDefinition("s1", null, true, null,
+                    List.of(loadAsStep("toDto", "credit")));
+            UseCaseDefinition parent = new UseCaseDefinition("p1", null, true, null,
+                    List.of(loadAsStep("fetchCredit", "credit"), subStep("s1")));
+            assembler().assemble(List.of(child, parent));
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> assertThat(event.getFormattedMessage())
+                            .contains("vars key 'credit'").contains("s1.toDto"));
+        } finally {
+            assemblerLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void isolatedSubUsecaseWritesDoNotCollideWithParent() {
+        // isolate 子用例 vars 全新：子内 as 键不与父合并，不触发碰撞 WARN
+        ListAppender<ILoggingEvent> appender = attachAssemblerAppender();
+        Logger assemblerLogger = (Logger) LoggerFactory.getLogger(UseCaseAssembler.class);
+        try {
+            UseCaseDefinition child = new UseCaseDefinition("s1", null, true, null,
+                    List.of(loadAsStep("toDto", "credit")));
+            UseCaseDefinition parent = new UseCaseDefinition("p1", null, true, null,
+                    List.of(loadAsStep("fetchCredit", "credit"),
+                            new StepDefinition("sub", "usecase", "s1", Map.of("isolate", true))));
+            assembler().assemble(List.of(child, parent));
+
+            assertThat(appender.list)
+                    .noneMatch(event -> event.getFormattedMessage().contains("vars key 'credit'"));
+        } finally {
+            assemblerLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void reportEnabledLogsDataflowPerUsecase() {
+        ListAppender<ILoggingEvent> appender = attachAssemblerAppender();
+        Logger assemblerLogger = (Logger) LoggerFactory.getLogger(UseCaseAssembler.class);
+        try {
+            UseCaseDefinition definition = new UseCaseDefinition("p1", null, true, null,
+                    List.of(starterStep(Map.of("businessId", "#path.id")),
+                            loadAsStep("fetchCredit", "credit"),
+                            new StepDefinition("check", "dataLoader", null,
+                                    Map.of("expression", "#vars.credit", "as", "checked"))));
+            new UseCaseAssembler(new StaticListableBeanFactory(), assemblerWithStarterFactories(),
+                    UseCaseTrace.DISABLED, true).assemble(List.of(definition));
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> assertThat(event.getFormattedMessage())
+                            .contains("dataflow: p1")
+                            .contains("start{businessId}")          // biz 写入（starter keys）
+                            .contains("credit{fetchCredit}")        // vars 写入（as 键 → 写入点）
+                            .contains("vars.credit"));               // vars 读取（表达式静态分析）
+        } finally {
+            assemblerLogger.detachAppender(appender);
+        }
+    }
+
+    private List<StepFactory> assemblerWithStarterFactories() {
+        List<StepFactory> withStarter = new java.util.ArrayList<>(factories);
+        withStarter.add(new StarterStepFactory(evaluator));
+        return withStarter;
     }
 }

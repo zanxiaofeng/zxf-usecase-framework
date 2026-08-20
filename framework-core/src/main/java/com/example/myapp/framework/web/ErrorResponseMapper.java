@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
 
+import com.example.myapp.framework.core.DataSnapshot;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.exception.ErrorCoded;
 import com.example.myapp.framework.core.exception.HttpStepException;
@@ -61,10 +62,19 @@ public class ErrorResponseMapper {
         return json(500, ApiResponse.error("INTERNAL_ERROR", "Internal server error", traceId), traceId);
     }
 
-    /** 5xx 记 ERROR 附完整堆栈（系统故障）；其余记 WARN 不附堆栈（业务/客户端问题，一次一处日志） */
+    /** 5xx 记 ERROR 附完整堆栈（系统故障）；其余记 WARN 不附堆栈（业务/客户端问题，一次一处日志）。失败现场（若有）一并进日志 */
     private void logFailure(int status, Throwable thrown, Throwable cause) {
+        DataSnapshot snapshot = thrown instanceof StepExecutionException see ? see.getDiagnostics() : null;
         if (status >= 500) {
+            if (snapshot != null) {
+                log.error("usecase failed, snapshot: {}", snapshot, thrown);
+                return;
+            }
             log.error("usecase failed", thrown);
+            return;
+        }
+        if (snapshot != null) {
+            log.warn("usecase failed: {} | snapshot: {}", cause.getMessage(), snapshot);
             return;
         }
         log.warn("usecase failed: {}", cause.getMessage());

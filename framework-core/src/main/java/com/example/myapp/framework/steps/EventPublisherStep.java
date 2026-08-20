@@ -1,5 +1,9 @@
 package com.example.myapp.framework.steps;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import lombok.RequiredArgsConstructor;
@@ -44,19 +48,30 @@ public final class EventPublisherStep implements Step {
 
     @Override
     public void execute(StepContext context) {
-        Object event = evaluator.evaluate(eventExpression, context);
+        Object event = evaluator.evaluate(eventExpression, context, name);
+        if (event == context.getPayload()) {
+            // 事件直接引用 payload：后续步骤的原地修改会污染 afterCommit 才发出的事件（顶层已浅拷贝隔离，嵌套结构仍共享）
+            log.warn("event step [{}]: 事件表达式直接引用 #payload，建议构造新对象——后续步骤原地修改嵌套结构仍会污染 afterCommit 事件",
+                    name);
+        }
+        // 别名防护：Map/List 事件浅拷贝脱钩顶层引用（深拷贝代价过大，嵌套不变性属数据纪律约定，见 README 扩展指南）
+        Object eventToPublish = switch (event) {
+            case Map<?, ?> map -> new LinkedHashMap<>(map);
+            case List<?> list -> new ArrayList<>(list);
+            case null, default -> event;
+        };
         boolean transactional = TransactionSynchronizationManager.isActualTransactionActive();
-        log.debug("event step [{}] publishing {} ({})", name, event.getClass().getSimpleName(),
+        log.debug("event step [{}] publishing {} ({})", name, eventToPublish.getClass().getSimpleName(),
                 transactional ? "after commit" : "immediately");
         if (!transactional) {
-            publisherSupplier.get().publish(event);
+            publisherSupplier.get().publish(eventToPublish);
             return;
         }
         // 事务内：仅注册意图，提交成功后才外发（回滚时 afterCommit 不触发，事件不发布）
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                publisherSupplier.get().publish(event);
+                publisherSupplier.get().publish(eventToPublish);
             }
         });
     }

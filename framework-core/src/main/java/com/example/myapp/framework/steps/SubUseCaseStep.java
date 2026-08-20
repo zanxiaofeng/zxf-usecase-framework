@@ -50,7 +50,7 @@ public final class SubUseCaseStep implements Step {
 
     @Override
     public void execute(StepContext context) {
-        Object input = evaluator.evaluate(inputExpression, context);
+        Object input = evaluator.evaluate(inputExpression, context, name);
         log.debug("sub-usecase step [{}] invoking [{}] (isolate={})", name, useCaseId, isolate);
         UseCaseInvoker invoker = invokerSupplier.get();
         Object result = isolate
