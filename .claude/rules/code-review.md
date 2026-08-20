@@ -4,7 +4,7 @@ paths:
 ---
 # Code Review Checklist
 
-**版本：** 1.1（2026-08-19 修订：@PathVariable 约束条目与 api-conventions 对齐）
+**版本：** 1.2（2026-08-20 修订：同步 sibling 判空治理变更——异常条目修正为类型化体系、新增 3 条判空 checklist）
 
 > **职责边界：** 本文件是 Code Review 的**统一入口**，汇总各专题文件的审查要点，不重复具体规则定义——每条指向对应规范文件的具体章节。
 
@@ -61,10 +61,13 @@ paths:
 - [ ] Controller 是否用 `@Valid` / `@Validated` 触发验证？
 - [ ] 嵌套对象是否加了 `@Valid` 级联验证？
 - [ ] `@ConfigurationProperties` 类是否加了 `@Validated`？
+- [ ] `Optional` 是否仅用于方法返回值（未用作字段/参数）？（→ `java-coding-standard.md` §3.3）
+- [ ] Null 安全是否采用三层防御（JSpecify `@NullMarked` + `Optional` + `Assert`）？（→ `java-coding-standard.md` §4.2）
+- [ ] String 字段是否用 `@NotBlank` 而非 `@NotNull`、嵌套配置是否加 `@Valid`？（NC-006/NC-014 → `null-check-governance.md` §3）
 
 ### 异常处理（→ `exception-handling.md`）
 - [ ] 业务错误是否全部通过类型化领域异常（`domain/exception/` + `CODE` 常量）表达？
-- [ ] 新增错误是否只新增 `ErrorCode` 枚举值（而非新异常类）？
+- [ ] 新增业务错误是否新增了独立异常类（而非只加错误码枚举值或裸 `RuntimeException`）？
 - [ ] Controller 是否零 try-catch？
 - [ ] 兜底 500 是否固定文案、不回显 `ex.getMessage()`？
 - [ ] `AccessDeniedException` 是否有显式 handler？

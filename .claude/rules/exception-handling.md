@@ -4,7 +4,7 @@ paths:
 ---
 # 异常处理规范
 
-**版本：** 1.1（2026-08-19 修订：§6.2 校验明细落点说明）
+**版本：** 1.2（2026-08-20 修订：§6.2 矩阵补 MethodValidationException / BindException 行，ConstraintViolationException 行细化——同步 sibling 判空治理变更）
 
 **适用范围：** JDK 21 + Spring Boot 4 + Spring MVC（Servlet 栈）REST API
 
@@ -263,7 +263,9 @@ public class GlobalExceptionHandler {
 | 领域异常（逐异常 handler） | handler 声明 | `ex.getErrorCode()` | WARN | 客户端消息用异常消息（构造时已保证安全） |
 | `MethodArgumentNotValidException` | 400 | `VALIDATION_ERROR` | WARN | `@RequestBody @Valid` 失败；字段明细拼接入 `message`（`rejectedValue` 对敏感字段脱敏为 `***`，信封结构见 `api-conventions.md`） |
 | `HandlerMethodValidationException` | 400 | `VALIDATION_ERROR` | WARN | **SF 6.1+ 关键变化**：Controller 参数直接注解（类级无 `@Validated`）走内建方法校验，抛此异常而非 `ConstraintViolationException` |
-| `ConstraintViolationException` | 400 | `VALIDATION_ERROR` | WARN | 类级 `@Validated` 的 AOP 方法校验（Service/Controller 均可能） |
+| `ConstraintViolationException` | 400 | `VALIDATION_ERROR` | WARN | 手动调用 `Validator.validate()` 的编程式校验、旧 AOP 链路残留——出现即甄别是否应迁入内建链路，而非原样保留 |
+| `MethodValidationException` | 400 | `VALIDATION_ERROR` | WARN | **SF 6.1+**：Service Bean 方法级校验（类级 `@Validated` + `MethodValidationPostProcessor` AOP 链路）失败；多为内部前置条件违例，**不逐字段对外暴露**（避免泄漏内部 API 形态），明细只记日志 |
+| `BindException` | 400 | `VALIDATION_ERROR` | WARN | `@ModelAttribute` 表单绑定校验失败（区别于 `@RequestBody` 的 `MethodArgumentNotValidException`，须分别声明） |
 | `MissingServletRequestParameterException` | 400 | `BAD_REQUEST` | WARN | 缺少必填请求参数 |
 | `MethodArgumentTypeMismatchException` | 400 | `BAD_REQUEST` | WARN | 路径/查询参数类型不匹配（如 id 传了非数字）；客户端消息含参数名即可，不回显原始值 |
 | `HttpMessageNotReadableException` | 400 | `BAD_REQUEST` | WARN | JSON 语法错误、枚举值非法、body 缺失 |

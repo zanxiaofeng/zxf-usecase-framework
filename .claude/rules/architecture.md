@@ -346,6 +346,8 @@ spring:
 | 14 | **字段注入 `@Autowired`** | 隐藏依赖、难以测试 | 构造器注入 `@RequiredArgsConstructor` |
 | 15 | **裸 `Optional.get()` / 返回 null 表示不存在** | 无业务语义，NPE 风险 | 出端口返回 `Optional<T>`；应用层 `orElseThrow` 领域异常 |
 
+> 判空专题的坏味道编号（NC-001~NC-014，可工具扫描）与改造执行流程见 `null-check-governance.md`。
+
 ***
 
 ## 9. 测试包结构（src/test/java 同构）
@@ -420,6 +422,7 @@ src/test/java/{base-package}/
 | API 设计规范 | `api-conventions.md` |
 | 异常处理完整规范 | `exception-handling.md` |
 | 参数校验规范 | `validation.md` |
+| 判空治理（NC 规则与改造执行） | `null-check-governance.md` |
 | Java 编码规范 | `java-coding-standard.md` |
 | SOLID 与迪米特法则 | `java-solid-lod.md` |
 | 对象健身操 | `java-object-calisthenics.md` |

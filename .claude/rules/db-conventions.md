@@ -8,7 +8,7 @@ paths:
 ---
 # Database Conventions
 
-**版本：** 1.1（2026-08-19 修订：触发面收窄；标注适用边界）
+**版本：** 1.2（2026-08-20 修订：同步 sibling 判空治理变更——补「约束三层对齐」小节）
 
 > **职责边界：** 本文件定义 JPA 实体（`{Entity}JpaEntity`）映射规则、`@Version` 乐观锁、持久化映射、索引策略、N+1 查询防护。迁移文件规范见 `db-migration.md`，分层位置见 `architecture.md` §5.1。
 >
@@ -135,6 +135,21 @@ public final class {Entity}PersistenceMapper {
 | **乐观锁** | **所有可变 JpaEntity 必须启用 `@Version`**（防止并发更新丢失数据） |
 | 构造器保护 | `@NoArgsConstructor(access = PROTECTED)`，字段由 PersistenceMapper 装配 |
 | 软删除 | `deletedAt` 字段 + `@SQLRestriction("deleted_at IS NULL")`（Hibernate 7，替代已废弃的 `@Where`） |
+
+### 约束三层对齐（DTO ↔ 实体 ↔ DDL）
+
+应用层校验都可能被绕过（直接 SQL、迁移脚本），数据库 `NOT NULL`/唯一/外键约束是不依赖调用路径的最终保证。**DTO 注解、实体注解、DDL 三层必须表达同一约束集：**
+
+| 代码层约束 | DDL 对应 | 不一致的典型后果 |
+|-----------|---------|----------------|
+| `@NotNull` / `@NotBlank` | `NOT NULL` | 校验放行的 null 在 INSERT 时报 500 |
+| `@Size(max = 64)` | `VARCHAR(64)` | 校验放行 64 字符，列仅 32，截断或报错 |
+| 业务唯一字段 | `UNIQUE` 约束 | 代码未查重，并发下重复数据落盘 |
+
+**规则：**
+- 对齐检查是**迁移审查固定环节**——Flyway 变更合入时 diff 列约束与实体/DTO 注解（对应 NC-013，见 `null-check-governance.md` §3）
+- 反向不一致同样有害：DDL 更严会把入口 400 推迟为持久层 500，**修复方向是补 DTO 注解而非放松 DDL**
+- 兜底是「兜」而非「堵」：`DataIntegrityViolationException` → 409 由 `exception-handling.md` §6.2 统一映射，友好报错由前置校验给出
 
 ### @Version (Optimistic Locking)
 

@@ -4,9 +4,11 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
+**版本：** 1.1（2026-08-20 修订：同步 sibling 判空治理变更——嵌套 @Valid 静默跳过警示、元数据/校验失败说明、§2.10 消息外化（按需）、§2.11 校验调优）
+
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
-> **职责边界：** 本文件定义参数校验的**完整规范**——声明式 Bean Validation（Controller / Service / ConfigurationProperties）和命令式断言（Domain Entity / VO / 内部不变式）。全局异常处理见 `exception-handling.md`，Controller 层 `@PathVariable` / 分页参数规范见 `api-conventions.md`。
+> **职责边界：** 本文件定义参数校验的**完整规范**——声明式 Bean Validation（Controller / Service / ConfigurationProperties）和命令式断言（Domain Entity / VO / 内部不变式）。全局异常处理见 `exception-handling.md`，Controller 层 `@PathVariable` / 分页参数规范见 `api-conventions.md`。判空坏味道识别（NC 规则表）与存量代码改造执行流程见 `null-check-governance.md`。
 
 ***
 
@@ -547,10 +549,14 @@ app:
 #### 避免做法
 
 - **忘记 `@Validated`** — 仅加字段注解不加 `@Validated`，校验被静默跳过
-- **忘记嵌套 `@Valid`** — 嵌套 `Pool` 等内部类的约束注解不会自动触发
+- **忘记嵌套 `@Valid`** — 嵌套 `Pool` 等内部类的约束注解不会自动触发。**Boot 3.4 起严格遵循 Bean Validation 规范**：缺 `@Valid` 的嵌套属性被**静默跳过**——启动照常成功而校验未执行，只能通过探针测试发现（NC-014，见 `null-check-governance.md` §3）；集合元素级联写在泛型实参位置 `List<@Valid Endpoint>`
 - **用 `Assert` 代替 Bean Validation 注解** — `@ConfigurationProperties` 类/record 禁止在 compact constructor 或构造器中用 `Assert.hasText` / `Assert.isTrue` 做字段级校验；改用 `@Validated` + `@NotBlank` / `@Positive` / `@Min` / `@Max` 等声明式注解。跨字段约束用 `@AssertTrue` 方法或自定义类级约束
 - **配置层做业务逻辑校验** — 配置只验证「值合法」，跨字段业务规则在 Service / Domain 层处理
 - **用配置验证替代测试** — 配置验证是启动时防线，不替代测试中的配置绑定测试
+
+> **元数据通道 ≠ 校验通道：** `spring-boot-configuration-processor`、`@NestedConfigurationProperty`、`@DeprecatedConfigurationProperty` 只在**编译期**生成元数据，服务 IDE 补全与弃用告警，「对实际绑定过程无影响」——`@NestedConfigurationProperty` **不能**触发嵌套校验（须 `@Valid`），处理器缺失也**不会**导致校验失效（只丢 IDE 体验）。
+
+> **校验失败行为：** 校验发生在 bean 初始化期，违例包装为 `ConfigurationPropertiesBindException`，FailureAnalyzer 输出 `Property`（实际键名）+ `Origin`（来源文件与行列号）+ `Reason`——排错第一落点是 `Origin`。
 
 ### 2.9 声明式校验最佳实践
 
@@ -599,6 +605,51 @@ public void createUser(@Valid UserCreateDTO dto) { ... }
 - **忽略 `@Valid` 级联**：嵌套对象必须加 `@Valid` 才会触发验证
 
 > **全局异常处理：** Bean Validation 校验失败后的异常处理（`MethodArgumentNotValidException`、`ConstraintViolationException` 等 → HTTP 响应映射）完整规范见 `exception-handling.md` §6.2。
+
+### 2.10 错误消息外化管理（按需启用）
+
+> **按需启用（本项目现状）：** 本项目无国际化需求，现有代码均用中文字面量消息——本节是引入 i18n / 消息外化需求时的规范，未启用前不强制消息键三段式。
+
+注解的 `message` 支持三类占位符：注解属性名（`{min}`/`{max}`）、`{validatedValue}`（被拒值）、`${...}` EL 表达式。硬编码消息会耦合文案与代码、无法国际化；启用外化后**注解里只写消息键**：
+
+```java
+// GOOD — 消息键三段式：<域>.<字段>.<约束>
+public record CreateUserCommand(
+        @NotBlank(message = "{user.username.notBlank}")
+        @Size(max = 32, message = "{user.username.size}")
+        String username) {}
+```
+
+```properties
+# src/main/resources/ValidationMessages.properties（规范默认 basename，按 locale 国际化）
+user.username.notBlank=用户名不能为空
+user.username.size=用户名长度不能超过 {max} 个字符
+```
+
+**规则（启用后）：**
+- 消息键用 `<域>.<字段>.<约束>` 三段式；对外 API 的错误定位依赖 `ApiResponse` 的 `code` 与拼入 `message` 的字段明细（`api-conventions.md`，本项目信封无 `errors[]` 数组），**不依赖消息文本**
+- 改造存量代码时，散落的中文字面量消息（NC-010，见 `null-check-governance.md` §3）统一收敛到资源文件
+
+### 2.11 校验行为调优
+
+默认收集全部约束冲突后一次性返回。两个调优点：
+
+**快速失败（fail fast）**——第一个约束冲突即终止校验：
+
+```properties
+hibernate.validator.fail_fast=true
+```
+
+> **注意：** 该属性是 Hibernate Validator 专有扩展，不属规范，更换实现即失效；代价是客户端一次只能看到一个错误，应按端点语义权衡，**不作全局默认开启**。
+
+**组序列（`@GroupSequence`）**——校验有成本顺序时（先廉价约束、再昂贵约束），控制执行顺序，前组未过则后续不执行：
+
+```java
+@GroupSequence({CheapChecks.class, ExpensiveChecks.class})
+public interface OrderedChecks {}
+```
+
+组序列只编排执行顺序，**不解决创建/更新场景差异**——后者优先拆 DTO（`service-conventions.md` §4）。
 
 ***
 
