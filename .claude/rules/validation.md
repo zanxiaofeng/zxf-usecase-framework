@@ -4,7 +4,7 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
-**版本：** 1.3（2026-08-21 修订：§2.8 补 `@DefaultValue` 小节——机制、专属边界（Boot/构造器绑定专属）与必填/可选选型直觉）
+**版本：** 1.5（2026-08-22 修订：§2.8 与外部评审修订版核对补强——机制表补「不支持占位符解析」；关键规则表补「`@ConstructorBinding` 单构造器可省略」；校验失败行为精确为 `BindValidationException` → `ConfigurationPropertiesBindException` 包装链（Boot 4.1.0 字节码实证））
 
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
@@ -472,6 +472,7 @@ public class {Feature}Properties {
 | **启动失败 = Fail Fast** | 校验失败时抛出 `ConstraintViolationException`，应用上下文初始化失败、拒绝启动。这是期望行为 —— 宁可启动失败也不带病运行 |
 | **敏感字段脱敏** | `password`、`secret`、`token` 等字段加 `@ToString.Exclude`，防止 `@Data` 生成的 `toString()` 泄露到日志 |
 | **默认值与验证不冲突** | 有默认值的字段（如 `port = 22`）仍可加验证注解；验证针对**绑定后的最终值**，默认值也必须满足约束 |
+| **`@ConstructorBinding` 按需标注** | 构造器绑定对 record 始终生效；普通类**单一构造器**自 Boot 3 起隐式构造器绑定，注解可省略；仅存在**多个构造器**时才需显式指定绑定构造器（本仓库 `StepDefinition` 即此案例：紧凑构造器 + 便捷构造器并存，故显式标注） |
 
 #### `@DefaultValue` 默认值（消灭可空的源头手段）
 
@@ -482,6 +483,8 @@ public class {Feature}Properties {
 | **Spring Boot 专属 + 构造器绑定专属** | `@DefaultValue`（`org.springframework.boot.context.properties.bind`）的 `@Target` 为 `PARAMETER`，只被构造器绑定（record / 不可变类）的 `ValueObjectBinder` 消费——**setter 绑定的 `@Data` 类不支持**，等价物是字段初始化器（`private List<X> x = List.of();`）；也管不到 `@Value` 注入（其默认值语法是 `${key:default}`） |
 | **缺失时代入缺省而非 null** | `@DefaultValue("true")` 的字符串值经 ConversionService 转为目标类型；无参 `@DefaultValue` 为「空」语义——集合/Map/数组 → **空集合**，聚合类型 → **递归绑定空实例**（嵌套组件的 `@DefaultValue` 继续生效，如 `Trace(false, false)`） |
 | **默认值也参与校验** | 默认值代入发生在校验之前，`@Validated` 校验的是兜底后的最终值——默认值自身必须满足约束注解 |
+| **集合形式与显式配置边界** | 集合默认值可用数组形式 `@DefaultValue({"a", "b"})` 或逗号分隔字符串；**显式配置（含空串）优先于默认值**——仅当属性完全缺失时才代入缺省 |
+| **不支持占位符解析** | 值必须是常量字符串，不能写 `${...}` 引用其他属性/环境变量；需占位符默认值时用 `@Value("${key:default}")`（零散项）或 `application.yml` 占位符 `${ENV:default}`（见 `null-check-governance.md` §10） |
 
 ```java
 @Validated
@@ -498,7 +501,7 @@ public record UseCaseProperties(
 **选型直觉（与跨框架共识一致）：**
 
 - **缺失即错误的必填项**（host、credential、URL 等环境相关值）→ **不给默认**，`@NotBlank` 系约束 fail-fast——给默认值是反模式：忘了配生产值会静默连上默认地址
-- **缺失有合理缺省语义的可选项** → `@DefaultValue` / 字段初始化器，让 null 从源头不存在（消费方零判空；这是判空治理「减量」目标成本最低的一手，见 `null-check-governance.md` §9）
+- **缺失有合理缺省语义的可选项** → `@DefaultValue` / 字段初始化器，让 null 从源头不存在（消费方零判空；这是判空治理「减量」目标成本最低的一手，见 `null-check-governance.md` §9；Java/Spring 各层的完整默认值手段目录见该文件 §10）
 - **禁止用 `@Value("${key:default}")` 在各注入点散落默认值**——同一 key 的默认值多处定义必然漂移；默认值集中声明在类型化配置类（NC-014 反散落 `@Value` 的延伸）
 
 #### Hibernate Validator Duration 约束注解
@@ -584,7 +587,7 @@ app:
 
 > **元数据通道 ≠ 校验通道：** `spring-boot-configuration-processor`、`@NestedConfigurationProperty`、`@DeprecatedConfigurationProperty` 只在**编译期**生成元数据，服务 IDE 补全与弃用告警，「对实际绑定过程无影响」——`@NestedConfigurationProperty` **不能**触发嵌套校验（须 `@Valid`），处理器缺失也**不会**导致校验失效（只丢 IDE 体验）。
 
-> **校验失败行为：** 校验发生在 bean 初始化期，违例包装为 `ConfigurationPropertiesBindException`，FailureAnalyzer 输出 `Property`（实际键名）+ `Origin`（来源文件与行列号）+ `Reason`——排错第一落点是 `Origin`。
+> **校验失败行为：** 校验发生在 bean 初始化期，违例先抛 `BindValidationException`（含 `ValidationErrors` 明细），再由 `ConfigurationPropertiesBindingPostProcessor` 统一包装为 `ConfigurationPropertiesBindException`——绑定失败（类型转换错误等）的 cause 为 `BindException`，校验失败的 cause 为 `BindValidationException`（Boot 4.1.0 字节码实证）。FailureAnalyzer 输出 `Property`（实际键名）+ `Origin`（来源文件与行列号）+ `Reason`——排错第一落点是 `Origin`。
 
 ### 2.9 声明式校验最佳实践
 

@@ -4,7 +4,7 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.6（2026-08-21 修订：§4.2 双注解同框规则补「第三条路」——缺失有合理缺省语义时优先 @DefaultValue 消灭可空，优于两种世界观）
+**版本：** 3.8（2026-08-22 修订：§5.2 构造器小节补 Lombok `addNullAnnotations = jspecify` 选项说明（1.18.46 实证存在）与未启用理由——与 `copyableAnnotations` 的分工）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
@@ -448,7 +448,7 @@ public class OrderService {
 - 容器/泛型的可空性标注在类型实参位置：`Map<String, @Nullable Object>`（值可空）、`List<@Nullable Item>`；可空泛型返回写 `<T> @Nullable T`
 - 覆写框架接口时，参数/返回值的可空性必须与父接口声明对齐（父接口 `@Nullable` 参数，覆写处同样 `@Nullable`），否则静态分析结果与运行期行为脱节
 - 绑定类上 `@NotBlank` 与 `@Nullable` **同框不是冲突**，两者管不同时刻：jakarta 约束在绑定后的运行期校验拒绝 null/空白；jspecify `@Nullable` 表达「校验完成前实例字段确实可空」（绑定器可省略该属性）。按消费方式二选一世界观并保持类内一致：record 绑定类取**校验前真相**（组件 `@Nullable` + 约束注解，消费方按可空读）；`@Data` 配置类取**校验后真相**（字段非空 + 类级 `@SuppressWarnings("NullAway.Init")`，消费方只见已校验实例、不做 null check）。注意 jakarta 规范：除 `@NotNull`/`@NotBlank`/`@NotEmpty` 外所有约束对 null 一律放行——「可选但须合规」写 `@Nullable` + `@Min/@Max`，「必填」写 `@NotBlank` 系
-- 绑定类上还有**第三条路，且优先于上述两种世界观**：配置项缺失有合理缺省语义时（空集合、`false`、递归空实例），用 `@DefaultValue`（构造器绑定）或字段初始化器（setter 绑定）代入缺省——组件既不加 `@Nullable` 也不加约束注解，null 从源头不存在，消费方零判空。这是减量成本最低的手段（机制与选型边界见 `validation.md` §2.8）；只有「缺失即错误」的必填项才落入两种世界观
+- 绑定类上还有**第三条路，且优先于上述两种世界观**：配置项缺失有合理缺省语义时（空集合、`false`、递归空实例），用 `@DefaultValue`（构造器绑定）或字段初始化器（setter 绑定）代入缺省——组件既不加 `@Nullable` 也不加约束注解，null 从源头不存在，消费方零判空。这是减量成本最低的手段（机制与选型边界见 `validation.md` §2.8；横切 Java/Spring 各层的默认值手段完整目录——`Optional.orElse` 系、`Objects.requireNonNullElse`、字段初始化器、`@RequestParam(defaultValue)` 等及适用边界——见 `null-check-governance.md` §10）；只有「缺失即错误」的必填项才落入两种世界观
 - 新代码推荐 JSpecify（`org.jspecify.annotations`），`jakarta.annotation` 仍可用
 - **禁止** `org.springframework.lang.Nullable`（SB4 已移除支持，Actuator endpoint 会报错）
 - 应用代码统一使用 `jakarta.annotation` 或 JSpecify，**禁止**旧版 `javax.annotation`（SB4 已完全移除）
@@ -570,6 +570,7 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
 **规则：**
 - 字段上的 `@Nullable` 等空值注解须经根目录 `lombok.config` 的 `lombok.copyableAnnotations` 复制到生成构造器的参数上——替换手写构造器前先确认该配置已覆盖所用注解，避免丢失参数级空值契约
+- Lombok 另提供 `lombok.addNullAnnotations = jspecify`（lombok 1.18.46 实证存在）：生成代码（getter、构造器参数等）自动附加 JSpecify `@NonNull`/`@Nullable`（TYPE_USE）标注。**本项目未启用**——`@NullMarked` 包内类型默认非空，可空契约已由 `copyableAnnotations` 复制路径覆盖，叠加启用收益有限且会与手写 `@Nullable` 并存产生重复标注风险；启用与否变更须重新跑 NullAway 全量验证
 - Lombok 生成构造器**不受**其他手写构造器影响（与 `@Data` 隐含的构造器不同），手写与生成构造器只要签名不冲突即可共存——示例：带默认值的便利构造器（委托静态工厂计算默认依赖）手写成无参构造器，`@RequiredArgsConstructor` 同时生成全参构造器
 - 含实际逻辑的构造器（参数校验、防御性复制、默认值计算）仍需手写，不适用本条
 

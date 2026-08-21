@@ -4,7 +4,7 @@ paths:
 ---
 # 判空治理规范（NC 规则与改造执行）
 
-**版本：** 1.2（2026-08-21 修订：§9 梯队表补「配置默认值」行——减量成本最低的一手，让 null 从源头不存在）
+**版本：** 1.4（2026-08-22 修订：与外部评审修订版核对补强——§10 `@RequestParam(defaultValue)` 行补空串语义对比（空串参数也代入默认值 vs `@DefaultValue` 键存在即不生效））
 **适用范围：** JDK 21 + Spring Boot 4.1 + Jakarta Validation 3.1
 
 > **职责边界：** 本文件是判空坏味道**识别与改造执行**的唯一权威——分层校验职责模型、NC-001~NC-014 坏味道规则表、BAD/GOOD 对照、改造顺序与验收标准、Agent Prompt 模板。具体机制规范分属各专题文件：声明式/命令式校验见 `validation.md`，校验失败的异常出口见 `exception-handling.md` §6，Optional/Null 安全/Lombok 见 `java-coding-standard.md` §3.3/§4.2/§5.2，DDL 约束见 `db-conventions.md`。冲突时机制细节以对应专题文件为准。
@@ -24,6 +24,17 @@ paths:
 | Service 入口层 | 业务前置条件 | 方法级校验 / Spring `Assert`；语义校验抛类型化领域异常 | `validation.md` §2.7/§3、`exception-handling.md` §4.2 |
 | Service 内部/领域层 | 不重复判空，依赖契约 | JSpecify `@NullMarked` + VO 紧凑构造器 | `java-coding-standard.md` §4.2 |
 | 持久层 | 最终一致性兜底 | DB `NOT NULL`/唯一约束 + 实体注解 | `db-conventions.md` |
+
+**风险来源 × 防御层次速查（总览）：**
+
+| 风险来源 | 防御层 | 手段 |
+|---------|--------|------|
+| 内部代码调用 | 编译期 | JSpecify `@NullMarked` + NullAway |
+| 外部请求输入 | 请求边界运行期 | Bean Validation（`@Valid` 级联） |
+| 配置文件错误 | 启动期 | `@ConfigurationProperties` + `@Validated` |
+| 可选参数/配置缺省 | 绑定/注入源头（横切） | 默认值策略（§10） |
+| 第三方库返回值 | 内部运行期 | `Optional` / `Objects.requireNonNull` / 默认值回退 |
+| 校验失败的对外响应 | 统一出口 | `GlobalExceptionHandler`（`exception-handling.md` §6） |
 
 **落地原则：**
 
@@ -305,7 +316,7 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 |------|---------|---------|--------------|
 | JSpecify + NullAway 静态分析 | 编译期 | 代码内部空安全契约 | `java-coding-standard.md` §4.2 |
 | 配置属性绑定校验 | 启动期 | 配置边界层 | `validation.md` §2.8 |
-| 配置默认值（`@DefaultValue` / 字段初始化器） | 绑定源头 | 缺失有合理缺省语义的可选配置——让 null 不存在（空集合/false/递归空实例） | `validation.md` §2.8 |
+| 配置默认值（`@DefaultValue` / 字段初始化器） | 绑定源头 | 缺失有合理缺省语义的可选配置——让 null 不存在（空集合/false/递归空实例） | §10、`validation.md` §2.8 |
 | Bean Validation + 全局异常出口 | 请求边界运行期 | DTO 入参、方法/路径参数、级联 | `validation.md` §2 + `exception-handling.md` §6 |
 | Assert 工具式判空 | 内部运行期 | 注解覆盖不到的内部前置条件 | `validation.md` §3.1 |
 | Optional 返回契约 | 内部运行期 | 查询返回值空语义 | `java-coding-standard.md` §3.3 |
@@ -326,7 +337,55 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 | 云原生配置边界：K8s 环境变量按 UPPER_SNAKE 映射 relaxed binding、启动打印脱敏生效配置、Actuator `configprops`/`env` 端点审计 | `validation.md` §2.8 的部署侧补充 |
 | 工具判空与静态分析协同：手写判空收敛为语义校验 + 内部断言，空安全契约移交 JSpecify/NullAway | `validation.md` §3 与 `java-coding-standard.md` §4.2 联用时的职责划分 |
 
-## 10. 误区速查表
+## 10. 默认值策略（横切关注点）
+
+默认值不是独立的防御层，而是**横切所有层的减量技巧**：在合适场景让 null 不产生、不传播，从源头减少各层的判空负担。与 NC 规则的关系：NC 表消除「多余的判空」，默认值策略消除「null 本身」。
+
+### 适用边界（先判边界，再选手段）
+
+| 场景 | 处置 |
+|------|------|
+| 配置项缺失有合理缺省语义（空集合、`false`、200、递归空实例） | 默认值代入 |
+| 请求可选参数缺省 | 默认值代入（`@RequestParam(defaultValue = ...)`） |
+| 第三方库返回有合理回退值 | 默认值回退 |
+| 业务关键数据缺失（host、credential、关联实体） | **快失败**（校验/异常），不得给默认值——忘了配生产值会静默连上默认地址 |
+| null 表示错误状态 | **抛异常**，不得用默认值掩盖 |
+
+### Java 语言机制
+
+| 手段 | 示例 | 注意 |
+|------|------|------|
+| `Optional.orElse` / `orElseGet` | `optional.orElse("Guest")` | `orElse` 急切求值，默认值构造昂贵时用 `orElseGet`（`java-coding-standard.md` §3.3） |
+| `Objects.requireNonNullElse` / `ElseGet`（JDK 9+） | `Objects.requireNonNullElse(user.getName(), "Unknown")` | 与 Spring `ObjectUtils.defaultIfNull` 等价，按工具优先级选更可读的（`java-coding-standard.md` §5.1） |
+| `Map.getOrDefault` | `config.getOrDefault("timeout", "30")` | — |
+| 字段初始化器 | `private String host = "localhost";` | setter 绑定（`@Data` 配置类、Jackson 绑定类）的默认值形态；**构造器绑定下会被构造器覆盖，须改用 `@DefaultValue`** |
+
+### Spring 机制
+
+| 手段 | 适用 | 注意 |
+|------|------|------|
+| `@DefaultValue`（构造器参数） | `@ConfigurationProperties` record / 不可变类 | 机制与边界见 `validation.md` §2.8（Boot 专属、`@Target(PARAMETER)`、无参空语义） |
+| 字段初始化器 | setter 绑定的 `@Data` 配置类、Jackson 绑定的 step config | 本仓库 step config 的既定模式（`framework.steps.config` 包） |
+| `@RequestParam(defaultValue = "20")` | Controller 可选查询参数 | 参数保证非 null，可用基本类型接收；隐含 `required = false`，且**空串参数也代入默认值**——与 `@DefaultValue`「键存在即使为空即不生效」语义相反（`validation.md` §2.8） |
+| `application.yml` 占位符 `${ENV:default}` | 环境变量缺省 | 默认值进配置文件而非代码 |
+| `Environment.getProperty(key, type, default)` | 编程式读取的兜底 | 仅无法类型化时使用 |
+| `@Value("${key:default}")` | **不推荐** | 散落注入点的默认值必然漂移（NC-014 的延伸）；收敛到类型化配置类 |
+
+### 与 JSpecify 的配合：默认值到位后必须移除 `@Nullable`
+
+默认值确保非空后继续保留 `@Nullable`，消费方会被静态分析强制继续判空——默认值白给：
+
+```java
+// BAD — 默认值已保证非空，@Nullable 让每个消费点继续判空
+private @Nullable Integer timeout = 30;
+
+// GOOD — 移除 @Nullable，类型即「非空」承诺
+private int timeout = 30;
+```
+
+> 配置层的完整机制（`@DefaultValue` 三种形态、与 `@Validated` 的顺序、必填/可选选型）见 `validation.md` §2.8；「消灭可空 vs 标注可空」的优先级见 `java-coding-standard.md` §4.2「第三条路」。
+
+## 11. 误区速查表
 
 按「误区 → 后果 → 正确做法」汇总，供评审速查；命中 NC 编号的条目可被工具自动扫描。完整机制回对应专题文件核对，本表只做索引。
 
