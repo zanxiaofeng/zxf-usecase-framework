@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
@@ -100,16 +101,15 @@ public final class UseCaseAssembler {
         // 第三遍：构建
         List<UseCase> assembled = new ArrayList<>();
         for (UseCaseDefinition definition : definitions) {
+            // id/steps/endpoint 非空已由第一遍 validateUseCase 保证（requireNonNull 让该契约对静态分析显式）
+            String id = Objects.requireNonNull(definition.id());
+            List<StepDefinition> stepDefinitions = Objects.requireNonNull(definition.steps());
             List<Step> steps = new ArrayList<>();
-            List<StepDefinition> stepDefinitions = definition.steps();
             for (int i = 0; i < stepDefinitions.size(); i++) {
-                steps.add(resolveStep(definition.id(), i, stepDefinitions.get(i)));
+                steps.add(resolveStep(id, i, stepDefinitions.get(i)));
             }
-            UseCaseDefinition.Endpoint endpoint = definition.endpoint();
-            EndpointSpec endpointSpec = definition.isShared()
-                    ? null
-                    : new EndpointSpec(endpoint.method(), endpoint.path(), endpoint.statusOrDefault());
-            assembled.add(new UseCase(definition.id(), definition.description(), endpointSpec, List.copyOf(steps),
+            EndpointSpec endpointSpec = definition.isShared() ? null : requireEndpointSpec(definition);
+            assembled.add(new UseCase(id, definition.description(), endpointSpec, List.copyOf(steps),
                     definition.isShared(), trace));
         }
         UseCaseRegistry registry = new UseCaseRegistry(assembled);
@@ -126,14 +126,22 @@ public final class UseCaseAssembler {
      */
     private void warnVarsKeyCollisions(List<UseCaseDefinition> definitions, VarsWriteIndex writeIndex) {
         for (UseCaseDefinition definition : definitions) {
-            writeIndex.writersOf(definition.id()).forEach((key, producers) -> {
+            String id = Objects.requireNonNull(definition.id());   // 第一遍校验已保证非空
+            writeIndex.writersOf(id).forEach((key, producers) -> {
                 if (producers.size() > 1) {
                     log.warn("usecase [{}]: vars key '{}' has {} writers {} —— 若非有意覆盖请改名"
                                     + "（静态可见范围：声明式 as 键；自定义 step 的运行期 vars 写入不在其列）",
-                            definition.id(), key, producers.size(), producers);
+                            id, key, producers.size(), producers);
                 }
             });
         }
+    }
+
+    /** 构建 EndpointSpec：非 shared 用例的 endpoint/method/path 非空已由 {@link #validateUseCase} 保证 */
+    private static EndpointSpec requireEndpointSpec(UseCaseDefinition definition) {
+        UseCaseDefinition.Endpoint endpoint = Objects.requireNonNull(definition.endpoint());
+        return new EndpointSpec(Objects.requireNonNull(endpoint.method()),
+                Objects.requireNonNull(endpoint.path()), endpoint.statusOrDefault());
     }
 
     private void validateUseCase(UseCaseDefinition definition) {
@@ -167,16 +175,17 @@ public final class UseCaseAssembler {
      * （串联嵌入时共享上下文，子的 starter 会覆写父管道 biz）。
      */
     private void validateStarterSteps(UseCaseDefinition definition) {
-        List<StepDefinition> steps = definition.steps();
+        String id = Objects.requireNonNull(definition.id());   // 第一遍校验已保证非空
+        List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
             if (!StarterStepFactory.TYPE.equals(step.type())) {
                 continue;
             }
-            checkReservedBizKeys(definition.id(), i, step);
+            checkReservedBizKeys(id, i, step);
             if (definition.isShared()) {
                 log.warn("shared usecase [{}] step #{}: starter 在串联嵌入时会覆写父管道 biz"
-                        + "（若非预期请改用 isolate: true 或移除该 starter）", definition.id(), i);
+                        + "（若非预期请改用 isolate: true 或移除该 starter）", id, i);
             }
         }
     }
@@ -202,7 +211,7 @@ public final class UseCaseAssembler {
         Map<String, Set<String>> refGraph = new HashMap<>();
         for (UseCaseDefinition definition : definitions) {
             Set<String> refs = new LinkedHashSet<>();
-            List<StepDefinition> steps = definition.steps();
+            List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
             for (int i = 0; i < steps.size(); i++) {
                 StepDefinition step = steps.get(i);
                 if (!SubUseCaseStepFactory.TYPE.equals(step.type())) {
@@ -268,11 +277,12 @@ public final class UseCaseAssembler {
                     "usecase [%s] step #%d: exactly one of 'ref' or 'type' must be set".formatted(useCaseId, index));
         }
         if (hasRef) {
+            String ref = Objects.requireNonNull(definition.ref());   // hasText 校验已保证非空
             try {
-                return beanFactory.getBean(definition.ref(), Step.class);
+                return beanFactory.getBean(ref, Step.class);
             } catch (BeansException e) {
                 throw new UseCaseAssemblyException(
-                        "usecase [%s] step #%d: no Step bean named '%s'".formatted(useCaseId, index, definition.ref()), e);
+                        "usecase [%s] step #%d: no Step bean named '%s'".formatted(useCaseId, index, ref), e);
             }
         }
         return invokeFactory(useCaseId, index, definition);

@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import java.util.function.Supplier;
+import java.util.Objects;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,7 +35,8 @@ public final class SubUseCaseStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         SubUseCaseConfig config = StepConfigs.bind(definition, SubUseCaseConfig.class);
         // ref（目标用例 id）的非空与存在性已由装配器校验
-        return new SubUseCaseStep(definition.nameOr(TYPE), definition.ref(), config.getInput(), config.getAs(),
+        return new SubUseCaseStep(definition.nameOr(TYPE), Objects.requireNonNull(definition.ref()),
+                config.getInput(), config.getAs(),
                 config.isIsolate(), invokerSupplier, evaluator);
     }
 }

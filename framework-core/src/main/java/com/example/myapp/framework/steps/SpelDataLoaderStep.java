@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import com.example.myapp.framework.core.DataLoader;
+import org.jspecify.annotations.Nullable;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 
 /**
@@ -8,7 +9,7 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
  */
 public final class SpelDataLoaderStep extends AbstractSpelStep implements DataLoader {
 
-    public SpelDataLoaderStep(String name, String expression, String as, StepExpressionEvaluator evaluator) {
+    public SpelDataLoaderStep(String name, String expression, @Nullable String as, StepExpressionEvaluator evaluator) {
         super(name, expression, as, evaluator);
     }
 }

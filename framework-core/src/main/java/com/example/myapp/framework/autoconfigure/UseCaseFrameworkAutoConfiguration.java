@@ -2,6 +2,7 @@ package com.example.myapp.framework.autoconfigure;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -294,8 +295,10 @@ public class UseCaseFrameworkAutoConfiguration {
                     log.info("shared usecase [{}] steps={}", useCase.getId(), stepNames);
                     continue;
                 }
+                // 非 shared 用例必有 endpoint（装配期校验），shared 已在上方 continue
+                UseCase.EndpointSpec endpoint = Objects.requireNonNull(useCase.getEndpoint());
                 log.info("route: {} {} -> usecase [{}] steps={}",
-                        useCase.getEndpoint().method(), useCase.getEndpoint().path(), useCase.getId(), stepNames);
+                        endpoint.method(), endpoint.path(), useCase.getId(), stepNames);
             }
         };
     }

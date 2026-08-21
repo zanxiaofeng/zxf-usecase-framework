@@ -14,7 +14,9 @@ import org.springframework.http.HttpMethod;
  *
  * <p>@Data + 字段初始值模式：默认值直接写在字段上，Jackson 绑定时仅覆盖 YAML 中出现的属性。</p>
  */
+// NullAway.Init：字段由 Jackson 绑定填充（不走构造器初始化），非空约束由 Bean Validation 在绑定后承担
 @Data
+@SuppressWarnings("NullAway.Init")
 public class HttpRequesterConfig {
 
     /** HTTP 方法（绑定大小写不敏感），缺省 GET */

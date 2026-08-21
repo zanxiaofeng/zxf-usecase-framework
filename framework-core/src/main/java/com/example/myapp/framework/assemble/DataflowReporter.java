@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -33,11 +34,13 @@ class DataflowReporter {
     }
 
     private String renderUseCase(UseCaseDefinition definition, VarsWriteIndex writeIndex) {
-        StringBuilder out = new StringBuilder("dataflow: ").append(definition.id());
+        // id/steps 非空由装配器第一遍校验保证（本报告在装配成功后渲染）
+        String id = Objects.requireNonNull(definition.id());
+        StringBuilder out = new StringBuilder("dataflow: ").append(id);
         Map<String, Set<String>> bizWrites = new LinkedHashMap<>();   // step -> biz keys
         Map<String, Set<String>> bizReads = new LinkedHashMap<>();
         Map<String, Set<String>> varsReads = new LinkedHashMap<>();
-        List<StepDefinition> steps = definition.steps();
+        List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
             String label = StringUtils.hasText(step.name()) ? step.name() : "#" + i;
@@ -61,7 +64,7 @@ class DataflowReporter {
         appendSection(out, "     reads", bizReads);
         // vars 写入经索引（含串联子用例合并）；读取为本用例自身 step 的静态分析
         Map<String, Set<String>> varsWrites = new LinkedHashMap<>();
-        writeIndex.writersOf(definition.id())
+        writeIndex.writersOf(id)
                 .forEach((key, producers) -> varsWrites.put(key, new TreeSet<>(producers)));
         appendSection(out, "vars writes", varsWrites);
         appendSection(out, "     reads", varsReads);

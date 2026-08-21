@@ -26,7 +26,8 @@ public class GreetingStep implements DataTransformer {
     public void execute(StepContext context) {
         // businessId 缺失属 starter 配置错误（而非用户输入问题），显式快失败而非把 null 变 "null" 字符串
         String businessId = Objects.toString(context.getBiz("businessId"), null);
-        UserDto user = userBaseClient.invoke(businessId);   // 管道内共享调用，异常沿子用例边界穿透
+        // 框架 client 契约返回可空；本管道中 null 只可能来自下游用例缺陷，快失败而非裸 NPE
+        UserDto user = Objects.requireNonNull(userBaseClient.invoke(businessId));   // 管道内共享调用，异常沿子用例边界穿透
 
         Map<String, Object> greeting = new LinkedHashMap<>();
         greeting.put("userId", user.id());

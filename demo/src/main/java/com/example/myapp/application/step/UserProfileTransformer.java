@@ -1,6 +1,7 @@
 package com.example.myapp.application.step;
 
 import java.util.LinkedHashMap;
+import java.util.Objects;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
@@ -25,7 +26,8 @@ public class UserProfileTransformer implements DataTransformer {
 
     @Override
     public void execute(StepContext context) {
-        UserDto user = context.getPayload(UserDto.class);
+        // 上游 dataLoader 已装载 UserDto（payload 可空是框架契约，此处 null 即管道配置缺陷）
+        UserDto user = Objects.requireNonNull(context.getPayload(UserDto.class));
         Object credit = context.getVar("credit");
 
         Map<String, Object> profile = new LinkedHashMap<>();

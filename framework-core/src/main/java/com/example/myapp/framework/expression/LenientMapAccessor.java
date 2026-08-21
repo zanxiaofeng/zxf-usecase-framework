@@ -2,6 +2,7 @@ package com.example.myapp.framework.expression;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.expression.AccessException;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.PropertyAccessor;
@@ -25,22 +26,24 @@ final class LenientMapAccessor implements PropertyAccessor {
     }
 
     @Override
-    public boolean canRead(EvaluationContext context, Object target, String name) {
+    public boolean canRead(EvaluationContext context, @Nullable Object target, String name) {
         return target instanceof Map;
     }
 
     @Override
-    public TypedValue read(EvaluationContext context, Object target, String name) {
-        return new TypedValue(((Map<?, ?>) target).get(name));
+    public TypedValue read(EvaluationContext context, @Nullable Object target, String name) {
+        // SpEL 仅在 canRead 为 true 后调用 read（此时 target 已是 Map）；模式匹配顺带消除可空 cast 解引用
+        return target instanceof Map<?, ?> map ? new TypedValue(map.get(name)) : TypedValue.NULL;
     }
 
     @Override
-    public boolean canWrite(EvaluationContext context, Object target, String name) {
+    public boolean canWrite(EvaluationContext context, @Nullable Object target, String name) {
         return false;
     }
 
     @Override
-    public void write(EvaluationContext context, Object target, String name, Object newValue) throws AccessException {
+    public void write(EvaluationContext context, @Nullable Object target, String name, @Nullable Object newValue)
+            throws AccessException {
         throw new AccessException("map writes are not supported by LenientMapAccessor");
     }
 }

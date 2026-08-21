@@ -7,7 +7,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * SpEL 三件套（dataLoader / dataTransformer / dataSaver）的 config schema。
  */
+// NullAway.Init：字段由 Jackson 绑定填充（不走构造器初始化），非空约束由 Bean Validation 在绑定后承担
 @Data
+@SuppressWarnings("NullAway.Init")
 public class SpelStepConfig {
 
     /** SpEL 表达式（必填） */

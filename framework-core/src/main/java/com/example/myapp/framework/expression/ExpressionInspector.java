@@ -74,7 +74,7 @@ public class ExpressionInspector {
         }
     }
 
-    private void walk(SpelNode node, SpelNode parent, Set<String> reads) {
+    private void walk(SpelNode node, @Nullable SpelNode parent, Set<String> reads) {
         if (node instanceof VariableReference variable) {
             String root = variable.toStringAST();
             if (root.startsWith("#")) {

@@ -65,7 +65,7 @@ public final class UseCase {
                 } catch (RuntimeException e) {
                     throw new StepExecutionException(id, step.name(), e).withDiagnostics(DataSnapshot.of(context));
                 }
-                if (trace.enabled()) {
+                if (before != null) {   // before 非空 ⟺ trace.enabled()（采样仅在 trace 开启时发生）
                     traceStep(step, before, context, System.nanoTime() - start);
                 }
                 log.debug("usecase [{}] step [{}] finished in {} ms",

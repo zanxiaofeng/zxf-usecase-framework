@@ -5,7 +5,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.util.StringUtils;
 
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
@@ -36,8 +38,9 @@ final class VarsWriteIndex {
 
     private Map<String, List<String>> compute(String useCaseId) {
         Map<String, List<String>> writers = new LinkedHashMap<>();
-        UseCaseDefinition definition = byId.get(useCaseId);
-        List<StepDefinition> steps = definition.steps();
+        // useCaseId 均来自已装配 definitions（递归路径有 containsKey 守卫），get 必命中
+        UseCaseDefinition definition = Objects.requireNonNull(byId.get(useCaseId));
+        List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
             String as = asKey(step);
@@ -45,17 +48,18 @@ final class VarsWriteIndex {
                 writers.computeIfAbsent(as, key -> new ArrayList<>()).add(stepLabel(step, i));
             }
             // 串联（非 isolate）子用例共享父 vars：子的写入键合并进父（isolate 子的写入落在子自己的 vars，不合并）
-            if (SubUseCaseStepFactory.TYPE.equals(step.type()) && !isIsolate(step) && byId.containsKey(step.ref())) {
-                writersOf(step.ref()).forEach((key, producers) ->
+            String ref = step.ref();
+            if (SubUseCaseStepFactory.TYPE.equals(step.type()) && !isIsolate(step) && ref != null && byId.containsKey(ref)) {
+                writersOf(ref).forEach((key, producers) ->
                         writers.computeIfAbsent(key, k -> new ArrayList<>()).addAll(
-                                producers.stream().map(producer -> step.ref() + "." + producer).toList()));
+                                producers.stream().map(producer -> ref + "." + producer).toList()));
             }
         }
         return writers;
     }
 
     /** 声明式 as 键（原始 config Map 读取；类型化绑定在工厂内发生，装配器只见 raw config） */
-    private static String asKey(StepDefinition step) {
+    private static @Nullable String asKey(StepDefinition step) {
         if (step.config() != null && step.config().get("as") instanceof String as && StringUtils.hasText(as)) {
             return as;
         }

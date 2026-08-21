@@ -1,6 +1,7 @@
 package com.example.myapp.framework.web;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -60,7 +61,9 @@ public final class UseCaseRouterFactory {
             if (useCase.isShared()) {
                 continue;   // shared 用例不绑定 endpoint，仅作为子用例被内嵌调用
             }
-            builder.route(predicateFor(useCase.getEndpoint()), request -> invoke(useCase, request));
+            // 非 shared 用例必有 endpoint（装配期校验）
+            EndpointSpec endpoint = Objects.requireNonNull(useCase.getEndpoint());
+            builder.route(predicateFor(endpoint), request -> invoke(useCase, request));
             anyRoute = true;
         }
         if (!anyRoute) {
@@ -85,7 +88,8 @@ public final class UseCaseRouterFactory {
         try {
             Object payload = useCase.execute(context);
             String traceId = traceIdOf(context);
-            ServerResponse.BodyBuilder response = ServerResponse.status(useCase.getEndpoint().status())
+            ServerResponse.BodyBuilder response = ServerResponse
+                    .status(Objects.requireNonNull(useCase.getEndpoint()).status())
                     .contentType(MediaType.APPLICATION_JSON);
             if (traceId != null) {
                 response.header(TRACE_ID_HEADER, traceId);

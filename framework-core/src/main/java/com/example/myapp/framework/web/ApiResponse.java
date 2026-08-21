@@ -24,11 +24,11 @@ public record ApiResponse<T>(
         return new ApiResponse<>("000000", data, null, OffsetDateTime.now(), traceId);
     }
 
-    public static ApiResponse<Void> error(String code, String message) {
+    public static ApiResponse<Void> error(String code, @Nullable String message) {
         return error(code, message, null);
     }
 
-    public static ApiResponse<Void> error(String code, String message, @Nullable String traceId) {
+    public static ApiResponse<Void> error(String code, @Nullable String message, @Nullable String traceId) {
         return new ApiResponse<>(code, null, message, OffsetDateTime.now(), traceId);
     }
 }

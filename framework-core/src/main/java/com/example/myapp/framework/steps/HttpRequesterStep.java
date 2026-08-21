@@ -75,7 +75,7 @@ public final class HttpRequesterStep implements HttpRequester {
             request.body(evaluator.evaluate(bodyExpression, context, name));
         }
         log.debug("http step [{}] {} {}", name, method, url);
-        Object result = request.exchange((req, res) -> {
+        @Nullable Object result = request.exchange((req, res) -> {
             int status = res.getStatusCode().value();
             Object responseBody;
             try {
@@ -103,7 +103,7 @@ public final class HttpRequesterStep implements HttpRequester {
         return resolved;
     }
 
-    private static String snippetOf(Object responseBody) {
+    private static String snippetOf(@Nullable Object responseBody) {
         if (responseBody == null) {
             return "";
         }

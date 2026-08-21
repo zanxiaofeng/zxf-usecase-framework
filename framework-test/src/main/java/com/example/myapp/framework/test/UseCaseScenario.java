@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -262,8 +263,12 @@ public final class UseCaseScenario {
         }
         return registry.all().stream()
                 .filter(candidate -> !candidate.isShared())
-                .filter(candidate -> candidate.getEndpoint().method().name().equalsIgnoreCase(method)
-                        && candidate.getEndpoint().path().equals(pathTemplate))
+                // 非 shared 用例必有 endpoint（装配期校验）
+                .filter(candidate -> {
+                    UseCase.EndpointSpec endpoint = Objects.requireNonNull(candidate.getEndpoint());
+                    return endpoint.method().name().equalsIgnoreCase(method)
+                            && endpoint.path().equals(pathTemplate);
+                })
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "no endpoint usecase matches %s %s — available routes: %s"
@@ -273,7 +278,10 @@ public final class UseCaseScenario {
     private String availableRoutes() {
         return registry.all().stream()
                 .filter(candidate -> !candidate.isShared())
-                .map(candidate -> candidate.getEndpoint().method() + " " + candidate.getEndpoint().path())
+                .map(candidate -> {
+                    UseCase.EndpointSpec endpoint = Objects.requireNonNull(candidate.getEndpoint());
+                    return endpoint.method() + " " + endpoint.path();
+                })
                 .collect(Collectors.joining(", "));
     }
 

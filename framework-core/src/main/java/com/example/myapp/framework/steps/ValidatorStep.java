@@ -8,6 +8,7 @@ import com.networknt.schema.Schema;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.expression.EvaluationException;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -86,6 +87,9 @@ public final class ValidatorStep implements Step {
             }
             return;
         }
+        // expression/schema 至少其一由 ValidatorConfig 的 @AssertTrue 在配置绑定期保证；
+        // 走到此处 expression 为 null ⇒ schema 非空（Assert 让该契约对静态分析显式）
+        Assert.state(schema != null, "validator step [" + name + "]: schema must not be null");
         Object target = evaluator.evaluate(targetExpression, context);
         JsonNode node = objectMapper.valueToTree(target);
         List<Error> errors = schema.validate(node);
@@ -98,7 +102,7 @@ public final class ValidatorStep implements Step {
         }
     }
 
-    private String renderMessage(StepContext context, String detail) {
+    private String renderMessage(StepContext context, @Nullable String detail) {
         String base = messageTemplate != null
                 ? String.valueOf(evaluator.resolve(messageTemplate, context))
                 : "validation failed in step [" + name + "]";

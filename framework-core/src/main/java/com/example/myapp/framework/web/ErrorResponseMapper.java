@@ -121,7 +121,7 @@ public class ErrorResponseMapper {
     }
 
     /** 领域异常未实现 ErrorCoded 时的反射回退：读取 getErrorCode()。 */
-    private String reflectiveErrorCode(Throwable cause) {
+    private @Nullable String reflectiveErrorCode(Throwable cause) {
         try {
             Method method = cause.getClass().getMethod("getErrorCode");
             Object value = method.invoke(cause);

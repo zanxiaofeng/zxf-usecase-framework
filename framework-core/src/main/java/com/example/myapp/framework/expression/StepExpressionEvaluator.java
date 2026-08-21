@@ -51,7 +51,7 @@ public final class StepExpressionEvaluator {
     private final BeanFactory beanFactory;
 
     /** 求值一个完整 SpEL 表达式（step config.expression / body 使用）。 */
-    public Object evaluate(String rawExpression, StepContext context) {
+    public @Nullable Object evaluate(String rawExpression, StepContext context) {
         return expressionCache.computeIfAbsent(rawExpression, RAW_PARSER::parseExpression)
                 .getValue(newEvaluationContext(context));
     }
@@ -62,7 +62,7 @@ public final class StepExpressionEvaluator {
      * （如非 JSON 文本体上取 {@code #body.xxx}），属客户端可修正的 4xx 而非系统故障。
      * Bean 方法抛出的领域异常不经 SpEL 包装、原样传播，仍走领域异常映射。
      */
-    public Object evaluate(String rawExpression, StepContext context, String stepName) {
+    public @Nullable Object evaluate(String rawExpression, StepContext context, String stepName) {
         try {
             return evaluate(rawExpression, context);
         } catch (EvaluationException e) {

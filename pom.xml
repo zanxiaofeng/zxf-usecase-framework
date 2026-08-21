@@ -26,5 +26,45 @@
         <!-- 技术栈基线：Java 21（Spring Boot 4 最低要求 Java 17） -->
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Error Prone + NullAway 编译期空值检查（java-coding-standard §4.2；lombok 版本由 Boot BOM 管理） -->
+        <error-prone.version>2.36.0</error-prone.version>
+        <nullaway.version>0.12.7</nullaway.version>
     </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- NullAway 试点：WARN 级（达标后升 ERROR 成为合入门禁）；JSpecifyMode 按 @NullMarked 语义推断非空默认 -->
+                    <compilerArgs>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>--should-stop=ifError=FLOW</arg>
+                        <!-- javac 内部包的 add-exports 在 .mvn/jvm.config（in-process 编译跑在 Maven JVM；
+                             放这里会被 javac release 模式拒绝） -->
+                        <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:WARN -XepOpt:NullAway:AnnotatedPackages=com.example.myapp -XepOpt:NullAway:JSpecifyMode=true</arg>
+                    </compilerArgs>
+                    <!-- 显式声明处理器路径（一旦显式，依赖自动发现失效——lombok 必须列入） -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>com.google.errorprone</groupId>
+                            <artifactId>error_prone_core</artifactId>
+                            <version>${error-prone.version}</version>
+                        </path>
+                        <path>
+                            <groupId>com.uber.nullaway</groupId>
+                            <artifactId>nullaway</artifactId>
+                            <version>${nullaway.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
