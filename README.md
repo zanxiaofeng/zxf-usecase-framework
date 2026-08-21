@@ -334,6 +334,7 @@ UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注
 
 ```bash
 mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（141 个）
+             # main 源集编译期经 Error Prone + NullAway 空值检查（WARN 级；.mvn/jvm.config 提供 javac 导出）
 ```
 
 - `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装 + 键级数据现场（最内层优先）/ dev trace 开关 / null context 入口 Assert（零容器）；
