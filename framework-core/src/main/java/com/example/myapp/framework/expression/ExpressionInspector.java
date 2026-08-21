@@ -95,7 +95,7 @@ public class ExpressionInspector {
     }
 
     /** 复合表达式中根节点之后的第一个属性段（#vars.credit.score → ".credit"；索引器静态键同理；取不到则为空） */
-    private String firstPropertySegment(SpelNode parent, SpelNode rootNode) {
+    private String firstPropertySegment(@Nullable SpelNode parent, SpelNode rootNode) {
         if (!(parent instanceof CompoundExpression compound)) {
             return "";
         }

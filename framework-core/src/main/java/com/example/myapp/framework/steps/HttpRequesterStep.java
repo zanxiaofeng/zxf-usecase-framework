@@ -2,6 +2,7 @@ package com.example.myapp.framework.steps;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import com.example.myapp.framework.auth.AuthHandler;
 import lombok.RequiredArgsConstructor;
@@ -72,10 +73,12 @@ public final class HttpRequesterStep implements HttpRequester {
         });
         authSpec.apply(request);
         if (bodyExpression != null) {
-            request.body(evaluator.evaluate(bodyExpression, context, name));
+            // 配置了 body 但求值为 null 属表达式/管道缺陷：fail-fast 显式报错，避免发出无语义的 null 体
+            request.body(Objects.requireNonNull(evaluator.evaluate(bodyExpression, context, name),
+                    () -> "http step [" + name + "]: body expression evaluated to null"));
         }
         log.debug("http step [{}] {} {}", name, method, url);
-        @Nullable Object result = request.exchange((req, res) -> {
+        @Nullable Object result = request.<@Nullable Object>exchange((req, res) -> {
             int status = res.getStatusCode().value();
             Object responseBody;
             try {

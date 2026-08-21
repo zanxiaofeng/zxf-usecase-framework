@@ -32,14 +32,14 @@ abstract class AbstractSpelStep implements Step {
 
     @Override
     public void execute(StepContext context) {
-        Object value = evaluator.evaluate(expression, context, name);
+        @Nullable Object value = evaluator.evaluate(expression, context, name);
         if (value == null && as == null && overwritePayloadWithNull()) {
             onNullOverwrite();
         }
         store(context, value);
     }
 
-    protected void store(StepContext context, Object value) {
+    protected void store(StepContext context, @Nullable Object value) {
         context.storeResult(value, as, overwritePayloadWithNull());
     }
 

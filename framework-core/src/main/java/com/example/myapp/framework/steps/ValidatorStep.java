@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.networknt.schema.Error;
@@ -89,7 +90,8 @@ public final class ValidatorStep implements Step {
         }
         // expression/schema 至少其一由 ValidatorConfig 的 @AssertTrue 在配置绑定期保证；
         // 走到此处 expression 为 null ⇒ schema 非空（Assert 让该契约对静态分析显式）
-        Assert.state(schema != null, "validator step [" + name + "]: schema must not be null");
+        Schema schema = Objects.requireNonNull(this.schema,
+                "validator step [" + name + "]: schema must not be null");
         Object target = evaluator.evaluate(targetExpression, context);
         JsonNode node = objectMapper.valueToTree(target);
         List<Error> errors = schema.validate(node);
