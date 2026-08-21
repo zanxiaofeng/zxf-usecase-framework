@@ -1,5 +1,6 @@
 package com.example.myapp.framework.steps.config;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 
@@ -12,7 +13,8 @@ import org.jspecify.annotations.Nullable;
 @Data
 public class SubUseCaseConfig {
 
-    /** 子用例入参 SpEL 表达式，缺省 #payload */
+    /** 子用例入参 SpEL 表达式，缺省 #payload（空白串覆盖默认值属配置错误，装配期拒绝） */
+    @NotBlank
     private String input = "#payload";
 
     /** 结果写入 #vars 的旁路键；缺省写回 payload（串联模式） */

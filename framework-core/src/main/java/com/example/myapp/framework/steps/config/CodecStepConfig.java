@@ -19,7 +19,8 @@ public class CodecStepConfig {
     @NotBlank
     private String algorithm;
 
-    /** 输入 SpEL 表达式，缺省 #payload */
+    /** 输入 SpEL 表达式，缺省 #payload（空白串覆盖默认值属配置错误，装配期拒绝） */
+    @NotBlank
     private String source = "#payload";
 
     /** 结果写入 #vars 的旁路键；缺省写回 payload */

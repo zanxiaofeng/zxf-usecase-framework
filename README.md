@@ -333,7 +333,7 @@ UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（141 个）
+mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（156 个）
              # main 源集编译期经 Error Prone + NullAway 空值检查（WARN 级；.mvn/jvm.config 提供 javac 导出）
 ```
 

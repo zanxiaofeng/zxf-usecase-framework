@@ -13,15 +13,17 @@ import org.springframework.util.StringUtils;
  * @param type      内置步骤类型：dataLoader / dataTransformer / httpRequester / dataSaver，
  *                  或任何通过 StepFactory Bean 扩展的自定义类型
  * @param ref       自定义 Step Bean 名（与 type 二选一）
- * @param config    该步骤的类型化配置（由各 StepFactory 解释）
+ * @param config    该步骤的类型化配置（由各 StepFactory 解释）；缺省空配置——构造期归一化，永不为 null
  * @param useCaseId 所属用例 id（非配置项，装配期由 UseCaseAssembler 经 {@link #withUseCaseId} 注入）
  */
 public record StepDefinition(@Nullable String name, @Nullable String type, @Nullable String ref,
-        @Nullable Map<String, Object> config, @Nullable String useCaseId) {
+        Map<String, Object> config, @Nullable String useCaseId) {
 
     /** 绑定入口声明：存在多个构造器时向 Boot 绑定器指定 canonical 构造器 */
     @ConstructorBinding
     public StepDefinition {
+        // null → 空配置：绑定与编程式两条入口统一归一化，消费方对 config 零判空
+        config = config == null ? Map.of() : config;
     }
 
     /** 配置绑定与手工构造入口：useCaseId 缺省 null */
@@ -32,10 +34,6 @@ public record StepDefinition(@Nullable String name, @Nullable String type, @Null
     /** 返回附带 useCaseId 的副本（装配器构建 step 前调用） */
     public StepDefinition withUseCaseId(String useCaseId) {
         return new StepDefinition(name, type, ref, config, useCaseId);
-    }
-
-    public Map<String, Object> configOrEmpty() {
-        return config == null ? Map.of() : config;
     }
 
     public String nameOr(String fallback) {

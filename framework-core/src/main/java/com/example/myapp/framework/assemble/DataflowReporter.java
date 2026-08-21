@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -35,16 +34,16 @@ class DataflowReporter {
 
     private String renderUseCase(UseCaseDefinition definition, VarsWriteIndex writeIndex) {
         // id/steps 非空由装配器第一遍校验保证（本报告在装配成功后渲染）
-        String id = Objects.requireNonNull(definition.id());
+        String id = definition.getId();
         StringBuilder out = new StringBuilder("dataflow: ").append(id);
         Map<String, Set<String>> bizWrites = new LinkedHashMap<>();   // step -> biz keys
         Map<String, Set<String>> bizReads = new LinkedHashMap<>();
         Map<String, Set<String>> varsReads = new LinkedHashMap<>();
-        List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
+        List<StepDefinition> steps = definition.getSteps();
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
             String label = StringUtils.hasText(step.name()) ? step.name() : "#" + i;
-            if (StarterStepFactory.TYPE.equals(step.type()) && step.config() != null
+            if (StarterStepFactory.TYPE.equals(step.type())
                     && step.config().get("keys") instanceof Map<?, ?> keys) {
                 for (Object key : keys.keySet()) {
                     bizWrites.computeIfAbsent(label, k -> new TreeSet<>()).add(String.valueOf(key));
@@ -74,9 +73,7 @@ class DataflowReporter {
     /** 收集 step config 中全部字符串值（含嵌套 Map/List，如 headers/starter keys 的模板）的数据根读取 */
     private Set<String> readsOf(StepDefinition step) {
         Set<String> reads = new TreeSet<>();
-        if (step.config() != null) {
-            collectStrings(step.config(), reads);
-        }
+        collectStrings(step.config(), reads);
         return reads;
     }
 

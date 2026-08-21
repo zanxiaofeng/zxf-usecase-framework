@@ -89,8 +89,8 @@ public final class UseCaseAssembler {
         for (UseCaseDefinition definition : definitions) {
             validateUseCase(definition);
             validateStarterSteps(definition);
-            if (!ids.add(definition.id())) {
-                throw new UseCaseAssemblyException("duplicate usecase id: " + definition.id());
+            if (!ids.add(definition.getId())) {
+                throw new UseCaseAssemblyException("duplicate usecase id: " + definition.getId());
             }
         }
         // 第二遍：子用例引用存在性 + 循环引用检测
@@ -101,15 +101,15 @@ public final class UseCaseAssembler {
         // 第三遍：构建
         List<UseCase> assembled = new ArrayList<>();
         for (UseCaseDefinition definition : definitions) {
-            // id/steps/endpoint 非空已由第一遍 validateUseCase 保证（requireNonNull 让该契约对静态分析显式）
-            String id = Objects.requireNonNull(definition.id());
-            List<StepDefinition> stepDefinitions = Objects.requireNonNull(definition.steps());
+            // id/steps/endpoint 非空已由第一遍 validateUseCase 保证（含编程式装配入口——该路径不经 Bean Validation）
+            String id = definition.getId();
+            List<StepDefinition> stepDefinitions = definition.getSteps();
             List<Step> steps = new ArrayList<>();
             for (int i = 0; i < stepDefinitions.size(); i++) {
                 steps.add(resolveStep(id, i, stepDefinitions.get(i)));
             }
             EndpointSpec endpointSpec = definition.isShared() ? null : requireEndpointSpec(definition);
-            assembled.add(new UseCase(id, definition.description(), endpointSpec, List.copyOf(steps),
+            assembled.add(new UseCase(id, definition.getDescription(), endpointSpec, List.copyOf(steps),
                     definition.isShared(), trace));
         }
         UseCaseRegistry registry = new UseCaseRegistry(assembled);
@@ -126,7 +126,7 @@ public final class UseCaseAssembler {
      */
     private void warnVarsKeyCollisions(List<UseCaseDefinition> definitions, VarsWriteIndex writeIndex) {
         for (UseCaseDefinition definition : definitions) {
-            String id = Objects.requireNonNull(definition.id());   // 第一遍校验已保证非空
+            String id = definition.getId();   // 第一遍校验已保证非空
             writeIndex.writersOf(id).forEach((key, producers) -> {
                 if (producers.size() > 1) {
                     log.warn("usecase [{}]: vars key '{}' has {} writers {} —— 若非有意覆盖请改名"
@@ -139,33 +139,33 @@ public final class UseCaseAssembler {
 
     /** 构建 EndpointSpec：非 shared 用例的 endpoint/method/path 非空已由 {@link #validateUseCase} 保证 */
     private static EndpointSpec requireEndpointSpec(UseCaseDefinition definition) {
-        UseCaseDefinition.Endpoint endpoint = Objects.requireNonNull(definition.endpoint());
-        return new EndpointSpec(Objects.requireNonNull(endpoint.method()),
-                Objects.requireNonNull(endpoint.path()), endpoint.statusOrDefault());
+        UseCaseDefinition.Endpoint endpoint = Objects.requireNonNull(definition.getEndpoint());
+        return new EndpointSpec(Objects.requireNonNull(endpoint.getMethod()),
+                endpoint.getPath(), endpoint.getStatus());
     }
 
     private void validateUseCase(UseCaseDefinition definition) {
-        if (!StringUtils.hasText(definition.id())) {
+        if (!StringUtils.hasText(definition.getId())) {
             throw new UseCaseAssemblyException("usecase id must not be blank");
         }
-        if (CollectionUtils.isEmpty(definition.steps())) {
-            throw new UseCaseAssemblyException("usecase [%s]: at least one step is required".formatted(definition.id()));
+        if (CollectionUtils.isEmpty(definition.getSteps())) {
+            throw new UseCaseAssemblyException("usecase [%s]: at least one step is required".formatted(definition.getId()));
         }
         if (definition.isShared()) {
             return;   // shared 用例不绑定 endpoint，跳过端点校验
         }
-        UseCaseDefinition.Endpoint endpoint = definition.endpoint();
+        UseCaseDefinition.Endpoint endpoint = definition.getEndpoint();
         // method 为强类型 HttpMethod；但 SF7 的 HttpMethod.valueOf 对未知方法名构造自定义实例（支持扩展方法）
         // 而非报错——拼写错误（如 GTE）会静默绑定成功、路由永不匹配，故装配期加标准方法白名单校验
-        if (endpoint == null || endpoint.method() == null || !StringUtils.hasText(endpoint.path())) {
+        if (endpoint == null || endpoint.getMethod() == null || !StringUtils.hasText(endpoint.getPath())) {
             throw new UseCaseAssemblyException(
                     "usecase [%s]: endpoint.method and endpoint.path are required (unless shared: true)"
-                            .formatted(definition.id()));
+                            .formatted(definition.getId()));
         }
-        if (!STANDARD_HTTP_METHODS.contains(endpoint.method())) {
+        if (!STANDARD_HTTP_METHODS.contains(endpoint.getMethod())) {
             throw new UseCaseAssemblyException(
                     "usecase [%s]: endpoint.method [%s] is not a standard HTTP method (expected one of %s)"
-                            .formatted(definition.id(), endpoint.method(), STANDARD_HTTP_METHODS));
+                            .formatted(definition.getId(), endpoint.getMethod(), STANDARD_HTTP_METHODS));
         }
     }
 
@@ -175,8 +175,8 @@ public final class UseCaseAssembler {
      * （串联嵌入时共享上下文，子的 starter 会覆写父管道 biz）。
      */
     private void validateStarterSteps(UseCaseDefinition definition) {
-        String id = Objects.requireNonNull(definition.id());   // 第一遍校验已保证非空
-        List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
+        String id = definition.getId();   // 第一遍校验已保证非空
+        List<StepDefinition> steps = definition.getSteps();
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
             if (!StarterStepFactory.TYPE.equals(step.type())) {
@@ -191,7 +191,7 @@ public final class UseCaseAssembler {
     }
 
     private void checkReservedBizKeys(String useCaseId, int index, StepDefinition step) {
-        if (step.config() == null || !(step.config().get("keys") instanceof Map<?, ?> keys)) {
+        if (!(step.config().get("keys") instanceof Map<?, ?> keys)) {
             return;
         }
         for (Object key : keys.keySet()) {
@@ -211,7 +211,7 @@ public final class UseCaseAssembler {
         Map<String, Set<String>> refGraph = new HashMap<>();
         for (UseCaseDefinition definition : definitions) {
             Set<String> refs = new LinkedHashSet<>();
-            List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
+            List<StepDefinition> steps = definition.getSteps();
             for (int i = 0; i < steps.size(); i++) {
                 StepDefinition step = steps.get(i);
                 if (!SubUseCaseStepFactory.TYPE.equals(step.type())) {
@@ -221,16 +221,16 @@ public final class UseCaseAssembler {
                 if (!StringUtils.hasText(ref)) {
                     throw new UseCaseAssemblyException(
                             "usecase [%s] step #%d: type 'usecase' requires 'ref' (target usecase id)"
-                                    .formatted(definition.id(), i));
+                                    .formatted(definition.getId(), i));
                 }
                 if (!ids.contains(ref)) {
                     throw new UseCaseAssemblyException(
                             "usecase [%s] step #%d: unknown sub-usecase ref '%s', available usecases: %s"
-                                    .formatted(definition.id(), i, ref, ids));
+                                    .formatted(definition.getId(), i, ref, ids));
                 }
                 refs.add(ref);
             }
-            refGraph.put(definition.id(), refs);
+            refGraph.put(definition.getId(), refs);
         }
         return refGraph;
     }

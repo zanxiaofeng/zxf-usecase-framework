@@ -4,7 +4,7 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
-**版本：** 1.1（2026-08-20 修订：同步 sibling 判空治理变更——嵌套 @Valid 静默跳过警示、元数据/校验失败说明、§2.10 消息外化（按需）、§2.11 校验调优）
+**版本：** 1.3（2026-08-21 修订：§2.8 补 `@DefaultValue` 小节——机制、专属边界（Boot/构造器绑定专属）与必填/可选选型直觉）
 
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
@@ -473,6 +473,34 @@ public class {Feature}Properties {
 | **敏感字段脱敏** | `password`、`secret`、`token` 等字段加 `@ToString.Exclude`，防止 `@Data` 生成的 `toString()` 泄露到日志 |
 | **默认值与验证不冲突** | 有默认值的字段（如 `port = 22`）仍可加验证注解；验证针对**绑定后的最终值**，默认值也必须满足约束 |
 
+#### `@DefaultValue` 默认值（消灭可空的源头手段）
+
+**机制三事实：**
+
+| 事实 | 说明 |
+|------|------|
+| **Spring Boot 专属 + 构造器绑定专属** | `@DefaultValue`（`org.springframework.boot.context.properties.bind`）的 `@Target` 为 `PARAMETER`，只被构造器绑定（record / 不可变类）的 `ValueObjectBinder` 消费——**setter 绑定的 `@Data` 类不支持**，等价物是字段初始化器（`private List<X> x = List.of();`）；也管不到 `@Value` 注入（其默认值语法是 `${key:default}`） |
+| **缺失时代入缺省而非 null** | `@DefaultValue("true")` 的字符串值经 ConversionService 转为目标类型；无参 `@DefaultValue` 为「空」语义——集合/Map/数组 → **空集合**，聚合类型 → **递归绑定空实例**（嵌套组件的 `@DefaultValue` 继续生效，如 `Trace(false, false)`） |
+| **默认值也参与校验** | 默认值代入发生在校验之前，`@Validated` 校验的是兜底后的最终值——默认值自身必须满足约束注解 |
+
+```java
+@Validated
+@ConfigurationProperties(prefix = "usecase")
+public record UseCaseProperties(
+        @DefaultValue List<@NotNull @Valid UseCaseDefinition> definitions,   // 缺省 → 空集合，消费方直接 for-each
+        @DefaultValue Map<String, @Min(100) @Max(599) Integer> errorMappings,
+        @DefaultValue("true") boolean report,                                // primitive，类型上不可空
+        @DefaultValue Trace trace) {                                         // 缺省 → Trace(false, false) 递归空实例
+    ...
+}
+```
+
+**选型直觉（与跨框架共识一致）：**
+
+- **缺失即错误的必填项**（host、credential、URL 等环境相关值）→ **不给默认**，`@NotBlank` 系约束 fail-fast——给默认值是反模式：忘了配生产值会静默连上默认地址
+- **缺失有合理缺省语义的可选项** → `@DefaultValue` / 字段初始化器，让 null 从源头不存在（消费方零判空；这是判空治理「减量」目标成本最低的一手，见 `null-check-governance.md` §9）
+- **禁止用 `@Value("${key:default}")` 在各注入点散落默认值**——同一 key 的默认值多处定义必然漂移；默认值集中声明在类型化配置类（NC-014 反散落 `@Value` 的延伸）
+
 #### Hibernate Validator Duration 约束注解
 
 `@DurationMin` / `@DurationMax` 是 **Hibernate Validator**（Jakarta Validation 参考实现，`spring-boot-starter-validation` 默认包含）提供的附加约束，用于校验 `java.time.Duration` 类型的最小/最大值。包路径：`org.hibernate.validator.constraints.time`。
@@ -804,7 +832,7 @@ public class OrderService {
 
 **关键规则：**
 - `@NullMarked` 标注在包（`package-info.java`）或类上，范围内所有类型默认 non-null，仅需为可空处加 `@Nullable`
-- 搭配 null checker（如 Checker Framework）或 Kotlin 可在编译期发现潜在 NPE
+- 搭配 NullAway 等 null checker 可在编译期强制检查（本项目已接入，集成与代码形态约定见 `java-coding-standard.md` §4.2）
 - **Actuator endpoint 参数禁止使用 `org.springframework.lang.Nullable`**，必须改用 `org.jspecify.annotations.Nullable`（SB4 已移除对前者的支持）
 
 **强制要求：** 校验逻辑必须与注解声明的契约保持一致。

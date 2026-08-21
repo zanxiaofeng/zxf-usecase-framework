@@ -43,7 +43,7 @@ class UseCaseAssemblerTest {
     }
 
     private UseCaseDefinition.Endpoint endpoint() {
-        return new UseCaseDefinition.Endpoint(HttpMethod.GET, "/x", null);
+        return new UseCaseDefinition.Endpoint(HttpMethod.GET, "/x", 200);
     }
 
     private StepDefinition loadStep() {
@@ -75,7 +75,7 @@ class UseCaseAssemblerTest {
 
     @Test
     void nonSharedUsecaseWithoutEndpointFails() {
-        UseCaseDefinition invalid = new UseCaseDefinition("e1", null, null, null, List.of(loadStep()));
+        UseCaseDefinition invalid = new UseCaseDefinition("e1", null, false, null, List.of(loadStep()));
         assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("endpoint");
@@ -85,8 +85,8 @@ class UseCaseAssemblerTest {
     void nonStandardHttpMethodFailsFast() {
         // SF7 的 HttpMethod.valueOf 对未知方法名静默构造自定义实例（不抛异常），
         // 装配期白名单校验负责拦截拼写错误（如 GTE），避免路由永不匹配的静默失效
-        UseCaseDefinition invalid = new UseCaseDefinition("e1", null, null,
-                new UseCaseDefinition.Endpoint(HttpMethod.valueOf("GTE"), "/x", null), List.of(loadStep()));
+        UseCaseDefinition invalid = new UseCaseDefinition("e1", null, false,
+                new UseCaseDefinition.Endpoint(HttpMethod.valueOf("GTE"), "/x", 200), List.of(loadStep()));
         assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("not a standard HTTP method");
@@ -95,7 +95,7 @@ class UseCaseAssemblerTest {
     @Test
     void subUsecaseStepAssemblesIntoSubUseCaseStep() {
         UseCaseDefinition shared = new UseCaseDefinition("s1", null, true, null, List.of(loadStep()));
-        UseCaseDefinition parent = new UseCaseDefinition("p1", null, null, endpoint(),
+        UseCaseDefinition parent = new UseCaseDefinition("p1", null, false, endpoint(),
                 List.of(loadStep(), subStep("s1")));
 
         UseCaseRegistry registry = assembler().assemble(List.of(shared, parent));
@@ -105,7 +105,7 @@ class UseCaseAssemblerTest {
 
     @Test
     void unknownSubUsecaseRefFailsWithAvailableIds() {
-        UseCaseDefinition parent = new UseCaseDefinition("p1", null, null, endpoint(),
+        UseCaseDefinition parent = new UseCaseDefinition("p1", null, false, endpoint(),
                 List.of(subStep("missing")));
         assertThatThrownBy(() -> assembler().assemble(List.of(parent)))
                 .isInstanceOf(UseCaseAssemblyException.class)
@@ -114,7 +114,7 @@ class UseCaseAssemblerTest {
 
     @Test
     void subUsecaseStepWithoutRefFails() {
-        UseCaseDefinition parent = new UseCaseDefinition("p1", null, null, endpoint(),
+        UseCaseDefinition parent = new UseCaseDefinition("p1", null, false, endpoint(),
                 List.of(new StepDefinition("sub", "usecase", null, Map.of())));
         assertThatThrownBy(() -> assembler().assemble(List.of(parent)))
                 .isInstanceOf(UseCaseAssemblyException.class)
@@ -141,7 +141,7 @@ class UseCaseAssemblerTest {
 
     @Test
     void refAndTypeTogetherFailsForNonUsecaseTypes() {
-        UseCaseDefinition invalid = new UseCaseDefinition("p1", null, null, endpoint(),
+        UseCaseDefinition invalid = new UseCaseDefinition("p1", null, false, endpoint(),
                 List.of(new StepDefinition("s", "dataLoader", "someBean", Map.of("expression", "'x'"))));
         assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
                 .isInstanceOf(UseCaseAssemblyException.class)

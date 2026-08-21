@@ -27,7 +27,7 @@ final class VarsWriteIndex {
 
     VarsWriteIndex(List<UseCaseDefinition> definitions) {
         for (UseCaseDefinition definition : definitions) {
-            byId.put(definition.id(), definition);
+            byId.put(definition.getId(), definition);
         }
     }
 
@@ -40,7 +40,7 @@ final class VarsWriteIndex {
         Map<String, List<String>> writers = new LinkedHashMap<>();
         // useCaseId 均来自已装配 definitions（递归路径有 containsKey 守卫），get 必命中
         UseCaseDefinition definition = Objects.requireNonNull(byId.get(useCaseId));
-        List<StepDefinition> steps = Objects.requireNonNull(definition.steps());
+        List<StepDefinition> steps = definition.getSteps();
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
             String as = asKey(step);
@@ -60,14 +60,14 @@ final class VarsWriteIndex {
 
     /** 声明式 as 键（原始 config Map 读取；类型化绑定在工厂内发生，装配器只见 raw config） */
     private static @Nullable String asKey(StepDefinition step) {
-        if (step.config() != null && step.config().get("as") instanceof String as && StringUtils.hasText(as)) {
+        if (step.config().get("as") instanceof String as && StringUtils.hasText(as)) {
             return as;
         }
         return null;
     }
 
     private static boolean isIsolate(StepDefinition step) {
-        return step.config() != null && Boolean.TRUE.equals(step.config().get("isolate"));
+        return Boolean.TRUE.equals(step.config().get("isolate"));
     }
 
     private static String stepLabel(StepDefinition step, int index) {

@@ -55,7 +55,7 @@ public class StepConfigs {
 
     private <T> T convert(StepDefinition definition, Class<T> configType, String label) {
         try {
-            return MAPPER.convertValue(definition.configOrEmpty(), configType);
+            return MAPPER.convertValue(definition.config(), configType);
         } catch (JacksonException | IllegalArgumentException e) {
             throw new UseCaseAssemblyException(
                     "step [%s]: invalid config: %s".formatted(label, e.getMessage()), e);

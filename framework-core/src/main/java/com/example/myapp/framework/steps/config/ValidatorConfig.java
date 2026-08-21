@@ -3,6 +3,7 @@ package com.example.myapp.framework.steps.config;
 import java.util.Map;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 
@@ -17,7 +18,8 @@ import com.example.myapp.framework.core.exception.StepValidationException;
 @Data
 public class ValidatorConfig {
 
-    /** 校验目标 SpEL 表达式，缺省 #payload */
+    /** 校验目标 SpEL 表达式，缺省 #payload（空白串覆盖默认值属配置错误，装配期拒绝） */
+    @NotBlank
     private String target = "#payload";
 
     /** 函数模式：返回 boolean 的 SpEL 断言表达式 */
@@ -29,7 +31,8 @@ public class ValidatorConfig {
     /** 校验失败消息模板 */
     private @Nullable String message;
 
-    /** 校验失败错误码，缺省 VALIDATION_FAILED */
+    /** 校验失败错误码，缺省 VALIDATION_FAILED（空白会让客户端收到空错误码，装配期拒绝） */
+    @NotBlank
     private String errorCode = StepValidationException.DEFAULT_CODE;
 
     /** expression 与 schema 必须二选一（空 schema Map 视为未配置，与历史行为一致） */

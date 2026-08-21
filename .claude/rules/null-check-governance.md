@@ -4,10 +4,12 @@ paths:
 ---
 # 判空治理规范（NC 规则与改造执行）
 
-**版本：** 1.0（2026-08-20 自 zxf-springboot-hexagonal-arch 同步引入；信封引用按本项目裁定适配）
+**版本：** 1.2（2026-08-21 修订：§9 梯队表补「配置默认值」行——减量成本最低的一手，让 null 从源头不存在）
 **适用范围：** JDK 21 + Spring Boot 4.1 + Jakarta Validation 3.1
 
 > **职责边界：** 本文件是判空坏味道**识别与改造执行**的唯一权威——分层校验职责模型、NC-001~NC-014 坏味道规则表、BAD/GOOD 对照、改造顺序与验收标准、Agent Prompt 模板。具体机制规范分属各专题文件：声明式/命令式校验见 `validation.md`，校验失败的异常出口见 `exception-handling.md` §6，Optional/Null 安全/Lombok 见 `java-coding-standard.md` §3.3/§4.2/§5.2，DDL 约束见 `db-conventions.md`。冲突时机制细节以对应专题文件为准。
+
+> **双目标：** 判空治理不止于「更安全」。目标一**安全**——边界快失败、不误放行、错误响应标准化；目标二**减量**——通过系统化设计（边界校验一次 + 静态契约 + 设计预防）让内部代码趋近零判空，而不是靠更勤快地写 if。两个目标的落地判据分别见 §1 落地原则 5 与 §7 验收 Checklist。
 
 ***
 
@@ -29,6 +31,7 @@ paths:
 2. **内部校验断言化**——注解覆盖不到的内部判空用 `Assert`/`Objects.requireNonNull` 一行完成，失败即抛异常
 3. **空值语义静态化**——JSpecify `@NullMarked`/`@Nullable` 把「可空/非空」变成可检查的契约（`java-coding-standard.md` §4.2）
 4. **错误响应标准化**——校验失败经唯一 `GlobalExceptionHandler` 出口，统一 `ApiResponse` 信封（`exception-handling.md` §6；**不启用 ProblemDetail**，见 §6.4）
+5. **判空须可归因**（减量目标的判据）——每处运行期判空必须能指明所守卫的信任边界（YAML 绑定、编程式装配入口、下游响应……）；答不上来的防御性判空属多余代码，删除而非保留。例：装配器 `validateUseCase` 对 id/steps 的 `hasText`/`isEmpty` 检查守卫的是编程式装配入口（Bean Validation 够不到 `new UseCaseDefinition(...)` 这条路径），不算多余；Service 对 Controller 已 `@NotBlank` 校验过的字段再判空，才是 NC-005 要消灭的重复设防
 
 ## 2. 判空坏味道类谱系（扫描地图）
 
@@ -244,6 +247,7 @@ public class OrderService {
 - [ ] 手工探针——超长字段：超过 `@Size` 上限的输入返回 400 而非落库或 500
 - [ ] 手工探针——基本类型 null：JSON 显式 `null` 传给基本类型字段，确认被反序列化层拦截（`HttpMessageNotReadableException` → 400）
 - [ ] 手工探针——配置项：故意缺失或注入非法值，确认启动 fail-fast 且 FailureAnalyzer 输出指向具体属性（NC-014）
+- [ ] 反向检查（减量目标）：本次改动**新增**的每处运行期判空都能指明所守卫的信任边界（§1 落地原则 5）；被高层手段（注解校验、`@NullMarked` 契约）覆盖的旧判空已删除，未保留「双保险」
 - [ ] 错误响应结构符合契约：`ApiResponse` 的 `code`/`message` 与 `api-conventions.md` 一致（本项目信封无 `errors[]` 数组）
 - [ ] 异常通道分离：类型化领域异常（业务规则）与参数校验异常（`VALIDATION_ERROR`）返回不同错误码，互不混用
 - [ ] DB 约束抽查：改造涉及的字段在 DDL 中均有对应 `NOT NULL`/长度/唯一约束（NC-013）
@@ -301,6 +305,7 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 |------|---------|---------|--------------|
 | JSpecify + NullAway 静态分析 | 编译期 | 代码内部空安全契约 | `java-coding-standard.md` §4.2 |
 | 配置属性绑定校验 | 启动期 | 配置边界层 | `validation.md` §2.8 |
+| 配置默认值（`@DefaultValue` / 字段初始化器） | 绑定源头 | 缺失有合理缺省语义的可选配置——让 null 不存在（空集合/false/递归空实例） | `validation.md` §2.8 |
 | Bean Validation + 全局异常出口 | 请求边界运行期 | DTO 入参、方法/路径参数、级联 | `validation.md` §2 + `exception-handling.md` §6 |
 | Assert 工具式判空 | 内部运行期 | 注解覆盖不到的内部前置条件 | `validation.md` §3.1 |
 | Optional 返回契约 | 内部运行期 | 查询返回值空语义 | `java-coding-standard.md` §3.3 |
@@ -309,6 +314,8 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 | Jackson/DB 边界兜底 | 序列化/持久层 | 非法输入拦截、脏数据不落盘 | `exception-handling.md` §6.2、`db-conventions.md` |
 
 > 静态分析与 Bean Validation 管辖不同信任边界：编译器看不见请求体/消息负载/配置文件（Bean Validation 运行时拦截）；内部把 null 传给非空参数是 NullAway 辖区。标准姿势是**入口校验一次、内部信任契约**。
+
+> **梯队即减量策略：** 高层手段启用后，低层针对同一约束的判空代码应被删除而非并存——字段加 `@NotBlank` 后，下游对同一字段的手工判空须同步删除；包加 `@NullMarked` 后，包内对非空参数的防御性判空须清理。保留「双保险」恰恰是分层职责模型（§1）要消灭的重复设防；同一规则在两个**不同**入口各设防一次（如 YAML 绑定的 `@NotBlank` 与编程式装配入口的 `requireNonNull`）不是重复，是两个信任边界各自的门卫。其中「配置默认值」是减量成本最低的一手：不标注、不校验、不判空，让 null 从源头不存在——选型直觉见 `validation.md` §2.8。
 
 **扩展方向（按需引入的横切增强，非新机制）：**
 

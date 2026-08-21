@@ -4,7 +4,7 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.3（2026-08-20 修订：同步 sibling 判空治理变更——§4.2 NullAway 编译期强制、§5.2 @NonNull 使用规则）
+**版本：** 3.6（2026-08-21 修订：§4.2 双注解同框规则补「第三条路」——缺失有合理缺省语义时优先 @DefaultValue 消灭可空，优于两种世界观）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
@@ -444,24 +444,42 @@ public class OrderService {
 ```
 
 **规则：**
-- `@NullMarked` 标注在包（`package-info.java`）或类上，范围内所有类型默认 non-null
+- `@NullMarked` 首选**包级**（`package-info.java`），范围内所有类型默认 non-null；类级标注仅用于过渡期的存量类。新增包必须随包创建 `package-info.java`
+- 容器/泛型的可空性标注在类型实参位置：`Map<String, @Nullable Object>`（值可空）、`List<@Nullable Item>`；可空泛型返回写 `<T> @Nullable T`
+- 覆写框架接口时，参数/返回值的可空性必须与父接口声明对齐（父接口 `@Nullable` 参数，覆写处同样 `@Nullable`），否则静态分析结果与运行期行为脱节
+- 绑定类上 `@NotBlank` 与 `@Nullable` **同框不是冲突**，两者管不同时刻：jakarta 约束在绑定后的运行期校验拒绝 null/空白；jspecify `@Nullable` 表达「校验完成前实例字段确实可空」（绑定器可省略该属性）。按消费方式二选一世界观并保持类内一致：record 绑定类取**校验前真相**（组件 `@Nullable` + 约束注解，消费方按可空读）；`@Data` 配置类取**校验后真相**（字段非空 + 类级 `@SuppressWarnings("NullAway.Init")`，消费方只见已校验实例、不做 null check）。注意 jakarta 规范：除 `@NotNull`/`@NotBlank`/`@NotEmpty` 外所有约束对 null 一律放行——「可选但须合规」写 `@Nullable` + `@Min/@Max`，「必填」写 `@NotBlank` 系
+- 绑定类上还有**第三条路，且优先于上述两种世界观**：配置项缺失有合理缺省语义时（空集合、`false`、递归空实例），用 `@DefaultValue`（构造器绑定）或字段初始化器（setter 绑定）代入缺省——组件既不加 `@Nullable` 也不加约束注解，null 从源头不存在，消费方零判空。这是减量成本最低的手段（机制与选型边界见 `validation.md` §2.8）；只有「缺失即错误」的必填项才落入两种世界观
 - 新代码推荐 JSpecify（`org.jspecify.annotations`），`jakarta.annotation` 仍可用
 - **禁止** `org.springframework.lang.Nullable`（SB4 已移除支持，Actuator endpoint 会报错）
 - 应用代码统一使用 `jakarta.annotation` 或 JSpecify，**禁止**旧版 `javax.annotation`（SB4 已完全移除）
 
-#### NullAway + Error Prone 编译期强制（可选增强）
+#### NullAway + Error Prone 编译期强制（本项目已接入）
 
-JSpecify 注解本身不产生检查，需静态分析器消费。推荐 **NullAway**（Uber，作为 Error Prone 的空值规则运行）：`@NullMarked` 包内违规传参/解引用在 CI 直接编译失败——空值契约成为「不修复就无法合并」的门禁。
+JSpecify 注解本身不产生检查（javac 不消费注解），需静态分析器消费。本项目已接入 **NullAway**（Uber，作为 Error Prone 的空值规则运行，JSpecify 模式）：`@NullMarked` 包内违规传参/解引用在编译期即被拦截——空值契约成为「不修复就无法合并」的门禁。
 
 **渐进引入策略（禁止全局一次开启）：**
 
 1. 新包从第一天起 `@NullMarked`（零成本区）
-2. 存量包逐个加 `@NullMarked` 并修复报错，**按包提交 PR**
+2. 存量包逐个加 `@NullMarked` 并修复报错，**按包提交 PR**（包少的小型项目可全量一次性标注）
 3. 未覆盖的包不加标注，按未标注语义跳过
-4. NullAway 先设 `warn` 级，存量达标后再升 `ERROR`
-5. 达标后把「新增代码必须在 `@NullMarked` 包内」写入评审清单防回潮
+4. NullAway 先设 `WARN` 级，存量达标后再升 `ERROR`（本项目现状：WARN 级试点，main 源集已清零、test 源集豁免）
+5. 达标后把「新增包必须随包创建 `package-info.java`」写入评审清单防回潮
 
-切忌反向操作——先全局启用再逐包豁免，豁免清单只增不减。Maven 集成需把 Error Prone 挂到 `maven-compiler-plugin`，且 JDK 16+ 强封装（JEP 396）要求配置 `--add-exports`/`--add-opens`（缺失时构建以 IllegalAccessError 失败）；关键开关：`NullAway:AnnotatedPackages` 限定检查范围、`NullAway:JSpecifyMode=true` 按 `@NullMarked` 语义推断非空默认。
+切忌反向操作——先全局启用再逐包豁免，豁免清单只增不减。关键开关：`NullAway:AnnotatedPackages` 限定检查范围、`NullAway:JSpecifyMode=true` 按 `@NullMarked` 语义推断非空默认；`-XepDisableAllChecks` 关闭 Error Prone 其余检查、聚焦空值。
+
+**Maven 集成实测要点（Error Prone 2.36.0 + NullAway 0.12.7 / JDK 21，本仓库根 pom 可直接参考）：**
+
+- Error Prone 挂到 `maven-compiler-plugin` 的 `-Xplugin:ErrorProne`；需同时加 `-XDcompilePolicy=simple --should-stop=ifError=FLOW`，否则与 javac 默认编译策略冲突
+- JDK 16+ 强封装（JEP 396）：javac 内部包的 `--add-exports` 必须写在 `.mvn/jvm.config`（in-process 编译运行在 Maven JVM 上）；放 `compilerArgs` 会被 `--release` 模式拒绝，`--add-opens` 编译期无效且致构建失败
+- 一旦显式声明 `annotationProcessorPaths`，依赖自动发现失效——**lombok 必须一并列入**，否则 Lombok 静默不生成代码
+- test 源集豁免（测试注入 null/mock 是常态，扫描性价比低）：execution 级覆盖 `default-testCompile`，用 `compilerArgs combine.self="override"`——`testCompilerArgs` 不覆盖 `compilerArgs`，无效
+
+**代码形态约定（与 NullAway 的数据流推断对齐）：**
+
+- NullAway 识别 `if (x == null) return/throw` 与 `Objects.requireNonNull`，**不识别 Spring `Assert` 的 null 契约**——「校验后使用」场景用 `Objects.requireNonNull` 赋局部变量，让非空契约对静态分析显式
+- Jackson / `@ConfigurationProperties` 绑定类（框架反射填充字段，源码中无显式赋值路径）类级 `@SuppressWarnings("NullAway.Init")`
+- 其余 `@SuppressWarnings("NullAway")` 必须逐点注释原因（已知合理压制：NullAway 0.12.7 不读 jar 内 `T extends @Nullable Object` 的 TYPE_USE 上界注解，如 `RestClient.exchange`）
+- Lombok 协同：字段上的 `@Nullable` 经根目录 `lombok.config` 复制到生成构造器参数（§5.2），替换手写构造器前确认配置覆盖
 
 > **与 Bean Validation 的分工：** 静态分析管代码内部契约（编译期），Bean Validation 管外部输入（运行期）——编译器看不见请求体/消息负载/配置文件。标准姿势是「入口校验一次、内部信任契约」，互补不替代。
 
