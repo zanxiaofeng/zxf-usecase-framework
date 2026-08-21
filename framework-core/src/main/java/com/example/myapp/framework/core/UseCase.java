@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpMethod;
+import org.springframework.util.Assert;
 
 import com.example.myapp.framework.core.exception.StepExecutionException;
 
@@ -28,9 +29,9 @@ import com.example.myapp.framework.core.exception.StepExecutionException;
 public final class UseCase {
 
     private final String id;
-    private final String description;
+    private final @Nullable String description;
     /** 端点描述；shared 用例为 null（不参与路由，仅作为子用例被内嵌调用） */
-    private final EndpointSpec endpoint;
+    private final @Nullable EndpointSpec endpoint;
     private final List<Step> steps;
     private final boolean shared;
     /** dev trace 开关（装配期注入；手工装配/测试默认关闭） */
@@ -50,7 +51,8 @@ public final class UseCase {
      * @throws StepExecutionException 任一步骤失败时抛出（步骤抛出的 StepExecutionException 原样上抛，
      *         附最内层数据现场）
      */
-    public Object execute(StepContext context) {
+    public @Nullable Object execute(StepContext context) {
+        Assert.notNull(context, "context must not be null");
         StepContext previous = StepContextHolder.set(context);
         try {
             for (Step step : steps) {
@@ -101,7 +103,7 @@ public final class UseCase {
     }
 
     /** trace 开启时的步前采样（键集防御性拷贝；关闭时不采样，零开销） */
-    private record TraceSample(String payloadType, String payloadValue, Set<String> varsKeys) {
+    private record TraceSample(String payloadType, @Nullable String payloadValue, Set<String> varsKeys) {
         static TraceSample of(StepContext context, boolean includeValues) {
             return new TraceSample(
                     typeOf(context.getPayload()),
@@ -113,7 +115,8 @@ public final class UseCase {
     /**
      * 用例对外暴露的端点描述。
      *
-     * @param method HTTP 方法（类型即合法性保证，装配期从配置字符串解析，非法值 fail-fast）
+     * @param method HTTP 方法（强类型，由配置绑定期经 {@code HttpMethod.valueOf} 转换；
+     *               SF7 起未知方法名会构造自定义实例而非报错，请使用标准大写方法名）
      * @param path   URI 模板，支持 {@code {var}} 路径变量
      * @param status 成功时返回的 HTTP 状态码（默认 200）
      */

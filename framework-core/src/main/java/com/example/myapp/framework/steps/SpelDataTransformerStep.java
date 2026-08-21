@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.DataTransformer;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
@@ -17,7 +18,7 @@ public final class SpelDataTransformerStep extends AbstractSpelStep implements D
 
     private final OnNull onNull;
 
-    public SpelDataTransformerStep(String name, String expression, String as, OnNull onNull,
+    public SpelDataTransformerStep(String name, String expression, @Nullable String as, OnNull onNull,
                                    StepExpressionEvaluator evaluator) {
         super(name, expression, as, evaluator);
         this.onNull = onNull;

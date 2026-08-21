@@ -9,6 +9,7 @@ import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.http.HttpMethod;
 
 import com.example.myapp.framework.assemble.StepDefinition;
 import com.example.myapp.framework.assemble.StepFactory;
@@ -42,7 +43,7 @@ class UseCaseAssemblerTest {
     }
 
     private UseCaseDefinition.Endpoint endpoint() {
-        return new UseCaseDefinition.Endpoint("GET", "/x", null);
+        return new UseCaseDefinition.Endpoint(HttpMethod.GET, "/x", null);
     }
 
     private StepDefinition loadStep() {
@@ -78,6 +79,17 @@ class UseCaseAssemblerTest {
         assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("endpoint");
+    }
+
+    @Test
+    void nonStandardHttpMethodFailsFast() {
+        // SF7 的 HttpMethod.valueOf 对未知方法名静默构造自定义实例（不抛异常），
+        // 装配期白名单校验负责拦截拼写错误（如 GTE），避免路由永不匹配的静默失效
+        UseCaseDefinition invalid = new UseCaseDefinition("e1", null, null,
+                new UseCaseDefinition.Endpoint(HttpMethod.valueOf("GTE"), "/x", null), List.of(loadStep()));
+        assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("not a standard HTTP method");
     }
 
     @Test

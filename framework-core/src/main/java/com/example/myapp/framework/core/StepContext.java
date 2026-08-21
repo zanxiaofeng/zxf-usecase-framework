@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
+import org.springframework.util.Assert;
 import org.springframework.web.servlet.function.ServerRequest;
 import tools.jackson.databind.ObjectMapper;
 
@@ -36,14 +37,16 @@ public final class StepContext {
     private final RequestBodyView bodyView;
     @Getter
     @Setter
-    private Object payload;
+    private @Nullable Object payload;
     @Getter
-    private final Map<String, Object> vars = new LinkedHashMap<>();
+    private final Map<String, @Nullable Object> vars = new LinkedHashMap<>();
     @Getter
-    private final Map<String, Object> biz = new LinkedHashMap<>();
+    private final Map<String, @Nullable Object> biz = new LinkedHashMap<>();
 
     /** Web 入口上下文：关联当前入站请求（由 framework.web.UseCaseRouterFactory 创建）。 */
     public static StepContext of(ServerRequest request, ObjectMapper objectMapper) {
+        Assert.notNull(request, "request must not be null");
+        Assert.notNull(objectMapper, "objectMapper must not be null");
         return new StepContext(request, new RequestBodyView(request, objectMapper));
     }
 
@@ -91,7 +94,7 @@ public final class StepContext {
     }
 
     /** 类型化读取：类型不符时立即抛 ClassCastException（而非延迟到调用点） */
-    public <T> T getPayload(Class<T> type) {
+    public <T> @Nullable T getPayload(Class<T> type) {
         return type.cast(payload);
     }
 
@@ -112,15 +115,15 @@ public final class StepContext {
         }
     }
 
-    public void putVar(String name, Object value) {
+    public void putVar(String name, @Nullable Object value) {
         vars.put(name, value);
     }
 
-    public Object getVar(String name) {
+    public @Nullable Object getVar(String name) {
         return vars.get(name);
     }
 
-    public <T> T getVar(String name, Class<T> type) {
+    public <T> @Nullable T getVar(String name, Class<T> type) {
         return type.cast(vars.get(name));
     }
 
@@ -128,15 +131,15 @@ public final class StepContext {
     // 关键数据区（biz）：starter step 写入，SpEL 经 #biz.xxx / 模板经 #{biz.xxx} 引用
     // ------------------------------------------------------------------
 
-    public void putBiz(String key, Object value) {
+    public void putBiz(String key, @Nullable Object value) {
         biz.put(key, value);
     }
 
-    public Object getBiz(String key) {
+    public @Nullable Object getBiz(String key) {
         return biz.get(key);
     }
 
-    public <T> T getBiz(String key, Class<T> type) {
+    public <T> @Nullable T getBiz(String key, Class<T> type) {
         return type.cast(biz.get(key));
     }
 }

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 
@@ -44,7 +45,7 @@ public final class EventPublisherStepFactory implements StepFactory {
         return new EventPublisherStep(name, config.event(), resolvePublisher(name, config.publisher()), evaluator);
     }
 
-    private Supplier<EventPublisher> resolvePublisher(String stepName, String publisherBeanName) {
+    private Supplier<EventPublisher> resolvePublisher(String stepName, @Nullable String publisherBeanName) {
         if (publisherBeanName != null) {
             validateNamedPublisher(stepName, publisherBeanName);
             return () -> beanFactory.getBean(publisherBeanName, EventPublisher.class);

@@ -9,7 +9,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -17,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.http.HttpMethod;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
@@ -50,6 +51,9 @@ import com.example.myapp.framework.steps.SubUseCaseStepFactory;
  */
 @Slf4j
 public final class UseCaseAssembler {
+
+    /** endpoint.method 白名单：SF7 的 HttpMethod.valueOf 对未知方法名静默构造自定义实例，装配期需显式拦截拼写错误 */
+    private static final Set<HttpMethod> STANDARD_HTTP_METHODS = Set.of(HttpMethod.values());
 
     /** starter 不得写入的 biz 保留键（traceId 由 Web 入口白名单校验后种子化，starter 可写会绕过校验） */
     private static final Set<String> RESERVED_BIZ_KEYS = Set.of(StepContext.TRACE_ID_KEY);
@@ -104,8 +108,7 @@ public final class UseCaseAssembler {
             UseCaseDefinition.Endpoint endpoint = definition.endpoint();
             EndpointSpec endpointSpec = definition.isShared()
                     ? null
-                    : new EndpointSpec(HttpMethod.valueOf(endpoint.method().toUpperCase(Locale.ROOT)),
-                            endpoint.path(), endpoint.statusOrDefault());
+                    : new EndpointSpec(endpoint.method(), endpoint.path(), endpoint.statusOrDefault());
             assembled.add(new UseCase(definition.id(), definition.description(), endpointSpec, List.copyOf(steps),
                     definition.isShared(), trace));
         }
@@ -134,27 +137,27 @@ public final class UseCaseAssembler {
     }
 
     private void validateUseCase(UseCaseDefinition definition) {
-        if (definition.id() == null || definition.id().isBlank()) {
+        if (!StringUtils.hasText(definition.id())) {
             throw new UseCaseAssemblyException("usecase id must not be blank");
         }
-        if (definition.steps() == null || definition.steps().isEmpty()) {
+        if (CollectionUtils.isEmpty(definition.steps())) {
             throw new UseCaseAssemblyException("usecase [%s]: at least one step is required".formatted(definition.id()));
         }
         if (definition.isShared()) {
             return;   // shared 用例不绑定 endpoint，跳过端点校验
         }
         UseCaseDefinition.Endpoint endpoint = definition.endpoint();
-        if (endpoint == null || endpoint.method() == null || endpoint.method().isBlank()
-                || endpoint.path() == null || endpoint.path().isBlank()) {
+        // method 为强类型 HttpMethod；但 SF7 的 HttpMethod.valueOf 对未知方法名构造自定义实例（支持扩展方法）
+        // 而非报错——拼写错误（如 GTE）会静默绑定成功、路由永不匹配，故装配期加标准方法白名单校验
+        if (endpoint == null || endpoint.method() == null || !StringUtils.hasText(endpoint.path())) {
             throw new UseCaseAssemblyException(
                     "usecase [%s]: endpoint.method and endpoint.path are required (unless shared: true)"
                             .formatted(definition.id()));
         }
-        try {
-            HttpMethod.valueOf(endpoint.method().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
+        if (!STANDARD_HTTP_METHODS.contains(endpoint.method())) {
             throw new UseCaseAssemblyException(
-                    "usecase [%s]: unsupported http method '%s'".formatted(definition.id(), endpoint.method()));
+                    "usecase [%s]: endpoint.method [%s] is not a standard HTTP method (expected one of %s)"
+                            .formatted(definition.id(), endpoint.method(), STANDARD_HTTP_METHODS));
         }
     }
 
@@ -206,7 +209,7 @@ public final class UseCaseAssembler {
                     continue;
                 }
                 String ref = step.ref();
-                if (ref == null || ref.isBlank()) {
+                if (!StringUtils.hasText(ref)) {
                     throw new UseCaseAssemblyException(
                             "usecase [%s] step #%d: type 'usecase' requires 'ref' (target usecase id)"
                                     .formatted(definition.id(), i));
@@ -253,8 +256,8 @@ public final class UseCaseAssembler {
     // ------------------------------------------------------------------
 
     private Step resolveStep(String useCaseId, int index, StepDefinition definition) {
-        boolean hasRef = definition.ref() != null && !definition.ref().isBlank();
-        boolean hasType = definition.type() != null && !definition.type().isBlank();
+        boolean hasRef = StringUtils.hasText(definition.ref());
+        boolean hasType = StringUtils.hasText(definition.type());
 
         if (SubUseCaseStepFactory.TYPE.equals(definition.type())) {
             // 子用例 step：ref 为目标用例 id（存在性与环已在第二遍校验）

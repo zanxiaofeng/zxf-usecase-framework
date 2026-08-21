@@ -15,6 +15,12 @@
     <description>用例编排框架本体：step 管道 / YAML 装配 / RouterFunction 绑定 / 认证与编解码 / Spring Boot 自动配置</description>
 
     <dependencies>
+        <!-- JSpecify 空安全契约（@NullMarked/@Nullable；版本由 Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
         <!-- 入站适配：Web MVC（framework.web 的 RouterFunction / ServerRequest） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

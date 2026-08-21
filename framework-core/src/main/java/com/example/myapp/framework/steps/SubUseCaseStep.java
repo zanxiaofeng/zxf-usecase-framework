@@ -4,6 +4,7 @@ import java.util.function.Supplier;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
@@ -38,7 +39,7 @@ public final class SubUseCaseStep implements Step {
     private final String name;
     private final String useCaseId;
     private final String inputExpression;
-    private final String as;
+    private final @Nullable String as;
     private final boolean isolate;
     private final Supplier<UseCaseInvoker> invokerSupplier;
     private final StepExpressionEvaluator evaluator;

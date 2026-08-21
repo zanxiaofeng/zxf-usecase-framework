@@ -2,7 +2,9 @@ package com.example.myapp.framework.assemble;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
+import org.springframework.util.StringUtils;
 
 /**
  * 单个 step 的配置定义。
@@ -14,8 +16,8 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  * @param config    该步骤的类型化配置（由各 StepFactory 解释）
  * @param useCaseId 所属用例 id（非配置项，装配期由 UseCaseAssembler 经 {@link #withUseCaseId} 注入）
  */
-public record StepDefinition(String name, String type, String ref, Map<String, Object> config,
-        String useCaseId) {
+public record StepDefinition(@Nullable String name, @Nullable String type, @Nullable String ref,
+        @Nullable Map<String, Object> config, @Nullable String useCaseId) {
 
     /** 绑定入口声明：存在多个构造器时向 Boot 绑定器指定 canonical 构造器 */
     @ConstructorBinding
@@ -37,6 +39,6 @@ public record StepDefinition(String name, String type, String ref, Map<String, O
     }
 
     public String nameOr(String fallback) {
-        return name == null || name.isBlank() ? String.valueOf(fallback) : name;
+        return StringUtils.hasText(name) ? name : String.valueOf(fallback);
     }
 }

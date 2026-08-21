@@ -333,10 +333,10 @@ UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（135 个）
+mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（141 个）
 ```
 
-- `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装 + 键级数据现场（最内层优先）/ dev trace 开关（零容器）；
+- `unit/framework/UseCaseTest`：管道顺序 / payload 流转 / 异常包装 + 键级数据现场（最内层优先）/ dev trace 开关 / null context 入口 Assert（零容器）；
 - `unit/framework/SpelStepTest`：SpEL 变量、`as` 旁路、saver null 保护、transformer `onNull: keep` 与默认清空 WARN、求值失败 400 收口（零容器）；
 - `unit/framework/ExpressionInspectorTest`：SpEL AST 静态读取分析（变量/根属性/模板/索引器/字面量）；
 - `unit/framework/StarterStepTest`：biz 关键数据区 + MDC 同步（含控制字符净化）、keys 必填校验；
@@ -348,7 +348,8 @@ mvn test     # 根目录执行：framework-core + framework-test + demo 三模�
 - `unit/framework/UseCaseAssemblerTest`：shared 端点豁免、id 唯一性、子用例 ref 存在性、循环引用（含自引用）检测、starter 保留键（traceId）护栏与 shared-starter WARN、as 键碰撞 WARN（含串联合并与 isolate 豁免）、数据流报告输出；
 - `unit/framework/UseCaseInvokerTest`：Java 调用子用例三种语义 + invokeShared 严格变体、父 payload 恢复、StepContextHolder 嵌套恢复、isolate/standalone 的 MDC 快照恢复、结果类型不匹配显式报错；
 - `unit/framework/ClientCredentialsAuthHandlerTest`：OAuth2 token 缓存命中与过期原子刷新；
-- `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析、#payload 别名 WARN 与浅拷贝脱钩；
+- `unit/framework/EventPublisherStepTest`：事件发布事务时机（无事务立即发 / afterCommit 提交后发 / 回滚不发）、发布器延迟解析、#payload 别名 WARN 与浅拷贝脱钩、null 事件 fail-fast；
+- `framework/web/ErrorResponseMapperTest`：裸 IAE → 400 `VALIDATION_ERROR`（含 StepExecutionException 包装链还原）、未知异常 → 500 固定文案不回显内部消息；
 - `unit/framework/EventPublisherStepFactoryTest`：装配期发布器校验（缺失 / 类型不符 / 多候选无 @Primary fail-fast，@Primary 运行期解析命中）；
 - `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
 - `framework/test/UseCaseScenarioTest`（framework-test 模块）：harness 自身语义——请求构造（path/query/header/body）、端点/id 双定位、traceId 种子化与 MDC 清理、payload/vars/biz/事件断言与失败路径；

@@ -2,6 +2,7 @@ package com.example.myapp.framework.steps.config;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 
 /**
  * SpEL 三件套（dataLoader / dataTransformer / dataSaver）的 config schema。
@@ -14,7 +15,7 @@ public class SpelStepConfig {
     private String expression;
 
     /** 结果写入 #vars 的旁路键；缺省写回 payload */
-    private String as;
+    private @Nullable String as;
 
     /**
      * 表达式结果为 null 时的 payload 处置（仅 dataTransformer 生效；dataSaver 恒为 KEEP）：

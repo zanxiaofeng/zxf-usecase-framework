@@ -5,6 +5,7 @@ import java.util.Map;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpMethod;
 
 /**
@@ -30,14 +31,14 @@ public class HttpRequesterConfig {
     private Map<String, Object> headers = Map.of();
 
     /** 请求体 SpEL 表达式，结果序列化为 JSON */
-    private String body;
+    private @Nullable String body;
 
     /** 认证配置；缺省不携带认证头 */
     @Valid
-    private AuthConfig auth;
+    private @Nullable AuthConfig auth;
 
     /** 结果写入 #vars 的旁路键；缺省写回 payload */
-    private String as;
+    private @Nullable String as;
 
     /** 认证块：scheme 必填（声明了 auth 就必须给出 scheme）；options 为 scheme 相关的开放 Map */
     @Data

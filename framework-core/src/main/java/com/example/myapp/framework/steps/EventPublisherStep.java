@@ -49,6 +49,12 @@ public final class EventPublisherStep implements Step {
     @Override
     public void execute(StepContext context) {
         Object event = evaluator.evaluate(eventExpression, context, name);
+        if (event == null) {
+            // 表达式求值为 null 属管道/配置缺陷（如引用了不存在的 vars 键）：fail-fast 显式报错，
+            // 否则下方 .getClass() 裸 NPE 被包成无语义 500；如需按 400 处理可用 usecase.error-mappings 覆盖
+            throw new IllegalStateException(
+                    "event step [%s]: event expression evaluated to null".formatted(name));
+        }
         if (event == context.getPayload()) {
             // 事件直接引用 payload：后续步骤的原地修改会污染 afterCommit 才发出的事件（顶层已浅拷贝隔离，嵌套结构仍共享）
             log.warn("event step [{}]: 事件表达式直接引用 #payload，建议构造新对象——后续步骤原地修改嵌套结构仍会污染 afterCommit 事件",
@@ -58,7 +64,7 @@ public final class EventPublisherStep implements Step {
         Object eventToPublish = switch (event) {
             case Map<?, ?> map -> new LinkedHashMap<>(map);
             case List<?> list -> new ArrayList<>(list);
-            case null, default -> event;
+            default -> event;
         };
         boolean transactional = TransactionSynchronizationManager.isActualTransactionActive();
         log.debug("event step [{}] publishing {} ({})", name, eventToPublish.getClass().getSimpleName(),

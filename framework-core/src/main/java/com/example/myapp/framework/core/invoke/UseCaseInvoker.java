@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.MdcScopes;
 import com.example.myapp.framework.core.StepContext;
@@ -41,7 +42,7 @@ import com.example.myapp.framework.core.UseCaseRegistry;
 public final class UseCaseInvoker {
 
     private final Supplier<UseCaseRegistry> registrySupplier;
-    private volatile UseCaseRegistry registry;
+    private volatile @Nullable UseCaseRegistry registry;
 
     private UseCaseRegistry registry() {
         UseCaseRegistry current = registry;
@@ -59,7 +60,7 @@ public final class UseCaseInvoker {
      * @param input     子用例初始 payload
      * @return 子用例最终 payload
      */
-    public Object invoke(String useCaseId, Object input) {
+    public @Nullable Object invoke(String useCaseId, @Nullable Object input) {
         StepContext current = StepContextHolder.current();
         if (current == null) {
             // 静默退化会把「异步边界丢失 ThreadLocal」误当正常独立调用（traceId/biz 断链），留 DEBUG 痕迹便于排查
@@ -74,7 +75,7 @@ public final class UseCaseInvoker {
      * 异步边界（@Async / CompletableFuture / 虚拟线程切换）ThreadLocal 不随线程迁移——
      * 跨边界请显式使用 {@link #invokeStandalone}，并把 traceId 与必要 biz 键作为 input 显式传入。
      */
-    public Object invokeShared(String useCaseId, Object input) {
+    public @Nullable Object invokeShared(String useCaseId, @Nullable Object input) {
         StepContext current = StepContextHolder.current();
         if (current == null) {
             throw new IllegalStateException(
@@ -85,7 +86,7 @@ public final class UseCaseInvoker {
     }
 
     /** 在指定父上下文中共享调用：vars/biz 互通，父 payload 执行后恢复。 */
-    public Object invoke(String useCaseId, Object input, StepContext parentContext) {
+    public @Nullable Object invoke(String useCaseId, @Nullable Object input, StepContext parentContext) {
         UseCase target = registry().require(useCaseId);
         Object parentPayload = parentContext.getPayload();
         parentContext.setPayload(input);
@@ -97,13 +98,13 @@ public final class UseCaseInvoker {
     }
 
     /** 隔离调用（基于当前上下文；管道外退化为独立调用）。 */
-    public Object invokeIsolated(String useCaseId, Object input) {
+    public @Nullable Object invokeIsolated(String useCaseId, @Nullable Object input) {
         StepContext current = StepContextHolder.current();
         return current == null ? invokeStandalone(useCaseId, input) : invokeIsolated(useCaseId, input, current);
     }
 
     /** 在指定父上下文基础上的隔离调用：vars 全新，biz 拷贝继承（子的修改不回传）；MDC 现场返回时恢复。 */
-    public Object invokeIsolated(String useCaseId, Object input, StepContext parentContext) {
+    public @Nullable Object invokeIsolated(String useCaseId, @Nullable Object input, StepContext parentContext) {
         UseCase target = registry().require(useCaseId);
         // biz 是 Map 拷贝而 MDC 是线程级单例：子管道内 starter 的 MDC 写入须随返回回滚，
         // 否则父管道后续日志输出子用例的 biz 值
@@ -116,7 +117,7 @@ public final class UseCaseInvoker {
     }
 
     /** 独立调用：全新上下文（无入站请求），自动种子化 traceId（biz 区），管道外场景使用；MDC 现场返回时恢复。 */
-    public Object invokeStandalone(String useCaseId, Object input) {
+    public @Nullable Object invokeStandalone(String useCaseId, @Nullable Object input) {
         UseCase target = registry().require(useCaseId);
         return MdcScopes.withRestoration(() -> {
             StepContext context = StepContext.standalone();

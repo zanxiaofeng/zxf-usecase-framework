@@ -141,6 +141,18 @@ class EventPublisherStepTest {
     }
 
     @Test
+    void nullEventExpressionFailsFast() {
+        // 判空治理：事件表达式求值为 null（如引用不存在的 vars 键）→ 显式 ISE，不再裸 NPE
+        Step step = step("#vars.missing");
+
+        assertThatThrownBy(() -> step.execute(contextWithPayload(Map.of())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("publish")
+                .hasMessageContaining("null");
+        assertThat(published).isEmpty();   // fail-fast 于发布之前
+    }
+
+    @Test
     void eventAliasingPayloadTriggersWarn() {
         // 事件表达式直接引用 #payload → WARN 提示（顶层已浅拷贝隔离，嵌套仍共享）
         Logger stepLogger = (Logger) LoggerFactory.getLogger(EventPublisherStep.class);

@@ -2,6 +2,7 @@ package com.example.myapp.framework.steps;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
@@ -21,7 +22,7 @@ abstract class AbstractSpelStep implements Step {
 
     private final String name;
     private final String expression;
-    private final String as;
+    private final @Nullable String as;
     protected final StepExpressionEvaluator evaluator;
 
     @Override

@@ -2,6 +2,7 @@ package com.example.myapp.framework.core.invoke;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.exception.UseCaseResultTypeException;
 
@@ -47,26 +48,26 @@ public abstract class AbstractUseCaseClient<I, O> {
     }
 
     /** 共享调用：管道内继承当前上下文（biz/vars 互通、父 payload 自动恢复）；管道外等同独立调用 */
-    public O invoke(I input) {
+    public @Nullable O invoke(I input) {
         return castResult(invoker.invoke(useCaseId, input));
     }
 
     /** 严格共享调用：要求管道内（异步边界请显式 invokeStandalone 并自行传递 traceId/必要 biz 键） */
-    public O invokeShared(I input) {
+    public @Nullable O invokeShared(I input) {
         return castResult(invoker.invokeShared(useCaseId, input));
     }
 
     /** 隔离调用：子用例 vars 全新、biz 拷贝继承，不污染当前上下文 */
-    public O invokeIsolated(I input) {
+    public @Nullable O invokeIsolated(I input) {
         return castResult(invoker.invokeIsolated(useCaseId, input));
     }
 
     /** 独立调用：全新上下文（管道外场景，如调度任务） */
-    public O invokeStandalone(I input) {
+    public @Nullable O invokeStandalone(I input) {
         return castResult(invoker.invokeStandalone(useCaseId, input));
     }
 
-    private O castResult(Object result) {
+    private @Nullable O castResult(@Nullable Object result) {
         if (result != null && !resultType.isInstance(result)) {
             throw new UseCaseResultTypeException(useCaseId, resultType, result.getClass());
         }

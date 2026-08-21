@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps.config;
 
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.event.Level;
 
 /**
@@ -17,7 +18,7 @@ public class LoggingConfig {
     private Level level = Level.INFO;
 
     /** 消息模板（{@code #{...}} 占位）；缺省输出默认格式 */
-    private String message;
+    private @Nullable String message;
 
     /** true 时以 DEBUG 输出上下文全部内容（payload / vars / biz），替代主消息输出；缺省 false */
     private boolean logContext;

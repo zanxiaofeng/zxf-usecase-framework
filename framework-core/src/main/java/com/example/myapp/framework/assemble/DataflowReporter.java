@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import lombok.experimental.UtilityClass;
+import org.springframework.util.StringUtils;
 
 import com.example.myapp.framework.expression.ExpressionInspector;
 import com.example.myapp.framework.steps.StarterStepFactory;
@@ -39,7 +40,7 @@ class DataflowReporter {
         List<StepDefinition> steps = definition.steps();
         for (int i = 0; i < steps.size(); i++) {
             StepDefinition step = steps.get(i);
-            String label = step.name() == null || step.name().isBlank() ? "#" + i : step.name();
+            String label = StringUtils.hasText(step.name()) ? step.name() : "#" + i;
             if (StarterStepFactory.TYPE.equals(step.type()) && step.config() != null
                     && step.config().get("keys") instanceof Map<?, ?> keys) {
                 for (Object key : keys.keySet()) {

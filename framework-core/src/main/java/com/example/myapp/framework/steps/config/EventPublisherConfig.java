@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps.config;
 
 import jakarta.validation.constraints.NotBlank;
+import org.jspecify.annotations.Nullable;
 
 /**
  * eventPublisher 步骤的 config schema。
@@ -11,5 +12,5 @@ public record EventPublisherConfig(
         @NotBlank String event,
 
         /** EventPublisher 实现 Bean 名；缺省取容器中唯一实现 */
-        String publisher) {
+        @Nullable String publisher) {
 }

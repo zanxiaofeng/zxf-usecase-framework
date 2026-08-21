@@ -1,6 +1,7 @@
 package com.example.myapp.framework.core;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 当前管道上下文的线程级持有者。
@@ -18,19 +19,19 @@ public class StepContextHolder {
     private final ThreadLocal<StepContext> CURRENT = new ThreadLocal<>();
 
     /** 当前线程正在执行的管道上下文；不在任何管道内（如定时任务、纯 Java 调用）时返回 null */
-    public StepContext current() {
+    public @Nullable StepContext current() {
         return CURRENT.get();
     }
 
     /** 绑定新上下文，返回被替换的上一层上下文（嵌套恢复用） */
-    StepContext set(StepContext context) {
+    @Nullable StepContext set(StepContext context) {
         StepContext previous = CURRENT.get();
         CURRENT.set(context);
         return previous;
     }
 
     /** 恢复上一层上下文；上一层为 null 时彻底清理 */
-    void restore(StepContext previous) {
+    void restore(@Nullable StepContext previous) {
         if (previous == null) {
             CURRENT.remove();
             return;

@@ -2,6 +2,10 @@ package com.example.myapp.framework.assemble;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.http.HttpMethod;
+
 /**
  * 单个用例的配置定义（对应 YAML 中 usecase.definitions 的一个元素）。
  *
@@ -11,19 +15,19 @@ import java.util.List;
  * @param endpoint    对外端点（shared 用例可缺省）
  * @param steps       有序步骤列表
  */
-public record UseCaseDefinition(String id, String description, Boolean shared, Endpoint endpoint,
-                                List<StepDefinition> steps) {
+public record UseCaseDefinition(@Nullable String id, @Nullable String description, @Nullable Boolean shared,
+                                @Nullable Endpoint endpoint, @Nullable List<StepDefinition> steps) {
 
     public boolean isShared() {
         return shared != null && shared;
     }
 
     /**
-     * @param method HTTP 方法（GET/POST/PUT/DELETE/PATCH）
+     * @param method HTTP 方法（强类型，绑定期经 {@code HttpMethod.valueOf} 转换；SF7 起未知方法名构造自定义实例而非报错，YAML 用标准大写 GET/POST/…）
      * @param path   URI 模板，支持 {var}
      * @param status 成功状态码，缺省 200
      */
-    public record Endpoint(String method, String path, Integer status) {
+    public record Endpoint(@Nullable HttpMethod method, @Nullable String path, @Nullable Integer status) {
         public int statusOrDefault() {
             return status == null ? 200 : status;
         }

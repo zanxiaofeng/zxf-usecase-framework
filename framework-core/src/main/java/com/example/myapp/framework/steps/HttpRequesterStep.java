@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpMethod;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.client.RestClient;
 
 import com.example.myapp.framework.core.HttpRequester;
@@ -49,9 +50,9 @@ public final class HttpRequesterStep implements HttpRequester {
     private final String url;
     private final Map<String, Object> uriVariables;
     private final Map<String, Object> headers;
-    private final String bodyExpression;
+    private final @Nullable String bodyExpression;
     private final AuthSpec authSpec;
-    private final String as;
+    private final @Nullable String as;
     private final RestClient restClient;
     private final StepExpressionEvaluator evaluator;
 
@@ -80,6 +81,8 @@ public final class HttpRequesterStep implements HttpRequester {
             try {
                 responseBody = res.bodyTo(Object.class);
             } catch (Exception e) {
+                // 下游畸形响应体不阻断状态码判定：降级为无体，留 DEBUG 痕迹（静默吞掉会让 HttpStepException 的 snippet 变空串）
+                log.debug("http step [{}]: response body read failed, treated as no body", name, e);
                 responseBody = null;
             }
             if (status >= 400) {
@@ -91,7 +94,7 @@ public final class HttpRequesterStep implements HttpRequester {
     }
 
     private Map<String, Object> resolveMap(Map<String, Object> source, StepContext context) {
-        if (source == null || source.isEmpty()) {
+        if (CollectionUtils.isEmpty(source)) {
             return Map.of();
         }
         Map<String, Object> resolved = new LinkedHashMap<>();

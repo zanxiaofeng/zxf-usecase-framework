@@ -18,6 +18,7 @@ import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.exception.ErrorCoded;
 import com.example.myapp.framework.core.exception.HttpStepException;
 import com.example.myapp.framework.core.exception.StepExecutionException;
+import com.example.myapp.framework.core.exception.StepValidationException;
 
 /**
  * 用例管道异常 → HTTP 响应映射（等价于 @RestControllerAdvice 的职责，自包含于 router 以适配函数式端点）：
@@ -26,6 +27,7 @@ import com.example.myapp.framework.core.exception.StepExecutionException;
  *   <li>领域异常（ErrorCoded）：状态码按 usecase.error-mappings → @ResponseStatus →
  *       {@code ErrorCoded.defaultHttpStatus()} → 500 的顺序解析；
  *       状态码 &lt; 500 时透传业务消息，&ge; 500 时使用固定文案（不回显内部异常消息）；</li>
+ *   <li>裸 {@link IllegalArgumentException}（VO 紧凑构造器等参数/格式校验）→ 400 VALIDATION_ERROR；</li>
  *   <li>下游 HTTP 失败（HttpStepException / RestClientResponseException / ResourceAccessException）→ 502；</li>
  *   <li>其余兜底 → 500 固定文案。</li>
  * </ul>
@@ -51,6 +53,13 @@ public class ErrorResponseMapper {
             logFailure(status, thrown, cause);
             String message = status >= 500 ? "Internal server error" : cause.getMessage();
             return json(status, ApiResponse.error(errorCode, message, traceId), traceId);
+        }
+        if (cause instanceof IllegalArgumentException) {
+            // 裸 IAE（如 VO 紧凑构造器的格式校验）按参数错误映射 400——格式错误走校验通道，
+            // 不与系统故障共用 500（null-check-governance 误区#10）；可被 usecase.error-mappings 覆盖的
+            // 仅是 ErrorCoded 路径，此固定分支如需调整请替换本类 Bean
+            log.warn("invalid argument: {}", cause.getMessage());
+            return json(400, ApiResponse.error(StepValidationException.DEFAULT_CODE, cause.getMessage(), traceId), traceId);
         }
         if (cause instanceof HttpStepException
                 || cause instanceof RestClientResponseException

@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.codec.Codec;
 import com.example.myapp.framework.codec.ReversibleCodec;
@@ -43,7 +44,7 @@ public final class CodecStep implements DataTransformer {
     private final Codec codec;
     private final Direction direction;
     private final String sourceExpression;
-    private final String as;
+    private final @Nullable String as;
     private final StepExpressionEvaluator evaluator;
 
     @Override

@@ -51,6 +51,16 @@ class UseCaseTest {
     }
 
     @Test
+    void executeRejectsNullContext() {
+        // 入口契约：null context fail-fast（Assert），而非延迟到首个 step 处炸出含糊 NPE
+        UseCase useCase = new UseCase("uc-null", null, null, List.of(), true);
+
+        assertThatThrownBy(() -> useCase.execute(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("context");
+    }
+
+    @Test
     void wrapsStepFailureWithUseCaseIdAndStepName() {
         Step boom = context -> {
             throw new IllegalStateException("boom");

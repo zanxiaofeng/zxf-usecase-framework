@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.util.StringUtils;
+
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
 
 /**
@@ -54,7 +56,7 @@ final class VarsWriteIndex {
 
     /** 声明式 as 键（原始 config Map 读取；类型化绑定在工厂内发生，装配器只见 raw config） */
     private static String asKey(StepDefinition step) {
-        if (step.config() != null && step.config().get("as") instanceof String as && !as.isBlank()) {
+        if (step.config() != null && step.config().get("as") instanceof String as && StringUtils.hasText(as)) {
             return as;
         }
         return null;
@@ -65,6 +67,6 @@ final class VarsWriteIndex {
     }
 
     private static String stepLabel(StepDefinition step, int index) {
-        return step.name() == null || step.name().isBlank() ? "#" + index : step.name();
+        return StringUtils.hasText(step.name()) ? step.name() : "#" + index;
     }
 }

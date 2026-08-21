@@ -15,6 +15,12 @@
     <description>YAML 用例的测试 harness：UseCaseScenario 流畅断言 payload/vars/biz/事件发布（配置即回归对象）</description>
 
     <dependencies>
+        <!-- JSpecify 空安全契约（@NullMarked/@Nullable；版本由 Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
         <!-- 框架本体 -->
         <dependency>
             <groupId>com.example</groupId>

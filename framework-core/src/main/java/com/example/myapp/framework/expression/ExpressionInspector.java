@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ParseException;
 import org.springframework.expression.common.CompositeStringExpression;
@@ -38,7 +39,7 @@ public class ExpressionInspector {
      * 收集一条配置文本（字面量 / 完整 SpEL / #{...} 模板）中的数据根读取。
      * 判定规则与 {@link StepExpressionEvaluator#resolve} 保持一致：非表达式字面量返回空集。
      */
-    public Set<String> collectReads(String expressionOrTemplate) {
+    public Set<String> collectReads(@Nullable String expressionOrTemplate) {
         if (expressionOrTemplate == null) {
             return Set.of();
         }

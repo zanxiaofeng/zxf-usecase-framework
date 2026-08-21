@@ -20,7 +20,7 @@ public class StepExecutionException extends RuntimeException {
     /** 失败现场（最内层优先）；未附加时为 null */
     private @Nullable DataSnapshot diagnostics;
 
-    public StepExecutionException(String useCaseId, String stepName, Throwable cause) {
+    public StepExecutionException(String useCaseId, String stepName, @Nullable Throwable cause) {
         super("usecase [%s] step [%s] failed: %s"
                 .formatted(useCaseId, stepName, cause == null ? null : cause.getMessage()), cause);
         this.useCaseId = useCaseId;

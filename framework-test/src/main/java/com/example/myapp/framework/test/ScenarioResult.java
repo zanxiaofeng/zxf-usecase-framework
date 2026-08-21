@@ -13,7 +13,7 @@ import com.example.myapp.framework.core.StepContext;
 public record ScenarioResult(@Nullable Object payload, StepContext context) {
 
     /** 类型化读取最终 payload（类型不符立即 ClassCastException） */
-    public <T> T payload(Class<T> type) {
+    public <T> @Nullable T payload(Class<T> type) {
         return type.cast(payload);
     }
 

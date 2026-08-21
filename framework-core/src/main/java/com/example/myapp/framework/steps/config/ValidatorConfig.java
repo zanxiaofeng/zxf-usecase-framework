@@ -4,6 +4,7 @@ import java.util.Map;
 
 import jakarta.validation.constraints.AssertTrue;
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.exception.StepValidationException;
 
@@ -20,13 +21,13 @@ public class ValidatorConfig {
     private String target = "#payload";
 
     /** 函数模式：返回 boolean 的 SpEL 断言表达式 */
-    private String expression;
+    private @Nullable String expression;
 
     /** schema 模式：JSON Schema（2020-12 方言），装配期预编译 */
-    private Map<String, Object> schema;
+    private @Nullable Map<String, Object> schema;
 
     /** 校验失败消息模板 */
-    private String message;
+    private @Nullable String message;
 
     /** 校验失败错误码，缺省 VALIDATION_FAILED */
     private String errorCode = StepValidationException.DEFAULT_CODE;

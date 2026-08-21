@@ -79,7 +79,7 @@ public final class StepExpressionEvaluator {
      *   <li>其余 → 原样字面量</li>
      * </ul>
      */
-    public Object resolve(String value, StepContext context) {
+    public @Nullable Object resolve(@Nullable String value, StepContext context) {
         if (value == null) {
             return null;
         }
@@ -96,7 +96,7 @@ public final class StepExpressionEvaluator {
     }
 
     /** {@link #resolve} 的 step 名收口变体：求值失败同样映射 400 并附 step 名。 */
-    public Object resolve(String value, StepContext context, String stepName) {
+    public @Nullable Object resolve(@Nullable String value, StepContext context, String stepName) {
         try {
             return resolve(value, context);
         } catch (EvaluationException e) {

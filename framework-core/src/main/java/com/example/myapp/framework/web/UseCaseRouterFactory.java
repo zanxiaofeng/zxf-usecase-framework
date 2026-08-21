@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.RequestPredicate;
@@ -109,7 +110,7 @@ public final class UseCaseRouterFactory {
         MDC.put(StepContext.TRACE_ID_KEY, traceId);
     }
 
-    static String traceIdOf(StepContext context) {
+    static @Nullable String traceIdOf(StepContext context) {
         Object value = context.getBiz(StepContext.TRACE_ID_KEY);
         return value == null ? null : String.valueOf(value);
     }

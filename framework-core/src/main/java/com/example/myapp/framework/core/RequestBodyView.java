@@ -1,9 +1,14 @@
 
 package com.example.myapp.framework.core;
 
+import java.io.IOException;
+
+import jakarta.servlet.ServletException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.function.ServerRequest;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -23,6 +28,7 @@ import com.example.myapp.framework.core.exception.StepValidationException;
  * （Servlet 请求体流只能消费一次，缓存随之共享）。</p>
  */
 @RequiredArgsConstructor
+@Slf4j
 final class RequestBodyView {
 
     private final @Nullable ServerRequest request;
@@ -52,7 +58,7 @@ final class RequestBodyView {
             return null;
         }
         String raw = readRawBody(currentRequest);
-        if (raw == null || raw.isBlank()) {
+        if (!StringUtils.hasText(raw)) {
             return null;    // 空体
         }
         if (!isJsonContentType(currentRequest)) {
@@ -69,8 +75,10 @@ final class RequestBodyView {
     private @Nullable String readRawBody(ServerRequest currentRequest) {
         try {
             return currentRequest.body(String.class);
-        } catch (Exception e) {
-            return null;    // 读取失败（如体已被消费）：按无体处理
+        } catch (IOException | ServletException | IllegalStateException e) {
+            // 读取失败（如体已被消费）：按无体处理，留 DEBUG 痕迹（静默降级会让后续校验报出误导性明细）
+            log.debug("request body read failed, treated as absent", e);
+            return null;
         }
     }
 

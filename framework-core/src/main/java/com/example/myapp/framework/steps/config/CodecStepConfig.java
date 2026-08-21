@@ -2,6 +2,7 @@ package com.example.myapp.framework.steps.config;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 
 /**
  * encoder / decoder 步骤的 config schema。decoder 的算法可逆性依赖注册表类型
@@ -20,5 +21,5 @@ public class CodecStepConfig {
     private String source = "#payload";
 
     /** 结果写入 #vars 的旁路键；缺省写回 payload */
-    private String as;
+    private @Nullable String as;
 }

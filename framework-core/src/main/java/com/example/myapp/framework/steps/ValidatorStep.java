@@ -6,7 +6,9 @@ import java.util.stream.Collectors;
 import com.networknt.schema.Error;
 import com.networknt.schema.Schema;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.expression.EvaluationException;
+import org.springframework.util.StringUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -55,9 +57,9 @@ public final class ValidatorStep implements Step {
 
     private final String name;
     private final String targetExpression;
-    private final String expression;
-    private final Schema schema;
-    private final String messageTemplate;
+    private final @Nullable String expression;
+    private final @Nullable Schema schema;
+    private final @Nullable String messageTemplate;
     private final String errorCode;
     private final StepExpressionEvaluator evaluator;
     private final ObjectMapper objectMapper;
@@ -100,6 +102,6 @@ public final class ValidatorStep implements Step {
         String base = messageTemplate != null
                 ? String.valueOf(evaluator.resolve(messageTemplate, context))
                 : "validation failed in step [" + name + "]";
-        return detail == null || detail.isBlank() ? base : base + ": " + detail;
+        return StringUtils.hasText(detail) ? base + ": " + detail : base;
     }
 }

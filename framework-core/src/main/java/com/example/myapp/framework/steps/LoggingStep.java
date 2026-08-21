@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps;
 
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
@@ -29,7 +30,7 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
 public final class LoggingStep implements Step {
 
     private final String name;
-    private final String messageTemplate;
+    private final @Nullable String messageTemplate;
     private final Level level;
     private final boolean logContext;
     private final StepExpressionEvaluator evaluator;

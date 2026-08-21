@@ -2,6 +2,7 @@ package com.example.myapp.infrastructure.adapter.in.web.demo;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,7 +21,7 @@ public class CreditScoreStubController {
     @GetMapping("/stub/credit/scores/{userId}")
     public ResponseEntity<Map<String, Object>> score(
             @PathVariable String userId,
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            @RequestHeader(value = "Authorization", required = false) @Nullable String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "missing bearer token"));

@@ -13,6 +13,12 @@
     <artifactId>usecase-framework-demo</artifactId>
 
     <dependencies>
+        <!-- JSpecify 空安全契约（@NullMarked/@Nullable；版本由 Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
         <!-- 框架本体（传递引入 webmvc / restclient / json-schema-validator） -->
         <dependency>
             <groupId>com.example</groupId>
