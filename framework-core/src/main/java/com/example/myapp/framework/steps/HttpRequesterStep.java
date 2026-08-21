@@ -78,7 +78,10 @@ public final class HttpRequesterStep implements HttpRequester {
                     () -> "http step [" + name + "]: body expression evaluated to null"));
         }
         log.debug("http step [{}] {} {}", name, method, url);
-        @Nullable Object result = request.<@Nullable Object>exchange((req, res) -> {
+        // NullAway 压制：Spring 7 源码中 exchange 的类型变量上界实为 T extends @Nullable Object
+        // （可返回 null 表达无体响应），但 NullAway 0.12.7 未读取 jar 内该 TYPE_USE 上界注解，误报非空
+        @SuppressWarnings("NullAway")
+        @Nullable Object result = request.exchange((req, res) -> {
             int status = res.getStatusCode().value();
             Object responseBody;
             try {

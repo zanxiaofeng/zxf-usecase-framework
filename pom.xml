@@ -64,6 +64,18 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+                <executions>
+                    <!-- test 源集豁免 NullAway（execution 级覆盖 compilerArgs）：
+                         测试代码的 null 注入/mock 是常态，扫描性价比低 -->
+                    <execution>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <compilerArgs combine.self="override">
+                                <arg>-XDcompilePolicy=simple</arg>
+                            </compilerArgs>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
