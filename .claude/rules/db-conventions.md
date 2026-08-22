@@ -12,7 +12,7 @@ paths:
 
 > **职责边界：** 本文件定义 JPA 实体（`{Entity}JpaEntity`）映射规则、`@Version` 乐观锁、持久化映射、索引策略、N+1 查询防护。迁移文件规范见 `db-migration.md`，分层位置见 `architecture.md` §5.1。
 >
-> **适用边界：** 本文件在项目引入持久层（Spring Data JPA + Flyway + MySQL）后生效；当前 usecase-framework 为无持久层的编排框架，本章暂不适用，引入时按本章执行。
+> **适用边界：** 本文件在项目引入持久层（Spring Data JPA + Flyway + MySQL）后生效；未引入持久层的项目本章暂不适用，引入时按本章执行。
 
 ***
 

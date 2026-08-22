@@ -405,9 +405,9 @@ src/test/java/{base-package}/
 
 ***
 
-## 11. 多模块演进（进阶，当前单模块）
+## 11. 多模块演进（进阶）
 
-本项目当前采用单模块结构。当模块间出现编译瓶颈、或需要用编译期约束强制领域层零依赖时，演进为 Maven 多模块：`domain`（零框架依赖）→ `application`（仅注解依赖）→ `infrastructure`（Spring Boot）→ `bootstrap`（聚合启动）。
+小型项目以单模块结构起步；当模块间出现编译瓶颈、或需要用编译期约束强制领域层零依赖时，演进为 Maven 多模块：`domain`（零框架依赖）→ `application`（仅注解依赖）→ `infrastructure`（Spring Boot）→ `bootstrap`（聚合启动）。
 
 > 多模块完整结构、POM 模板与包扫描配置见设计指南第十章。
 

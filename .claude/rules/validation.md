@@ -4,7 +4,7 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
-**版本：** 1.6（2026-08-22 修订：§4 注解来源表纠错——`@CheckForNull` 实为 SpotBugs/JSR-305 注解而非 jakarta.annotation，禁止新引入；jakarta 注解拼写统一为 `@Nonnull`；§2.8 五事实表补「与 `@Valid` 正交」行、checklist 补 `@DefaultValue` 选型条目（回合同源规范）。此前 1.5：§2.8 与外部评审修订版核对补强——机制表补「不支持占位符解析」；关键规则表补「`@ConstructorBinding` 单构造器可省略」；校验失败行为精确为 `BindValidationException` → `ConfigurationPropertiesBindException` 包装链（Boot 4.1.0 字节码实证））
+**版本：** 1.7（2026-08-22 通用化：项目标识符（UseCaseProperties/StepDefinition 案例指称）参数化为 `{Feature}` 占位符；§2.10 框注与规则通用化（无 i18n 需求的项目不强制）、信封表述统一 `errors[]` 标准结构；NullAway「已接入」改「推荐接入」；项目选型迁至项目 CLAUDE.md「规范适配」段。此前 1.6：§4 注解来源表纠错（`@CheckForNull` 非 jakarta）；§2.8 五事实表补「与 `@Valid` 正交」）
 
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
@@ -472,7 +472,7 @@ public class {Feature}Properties {
 | **启动失败 = Fail Fast** | 校验失败时抛出 `ConstraintViolationException`，应用上下文初始化失败、拒绝启动。这是期望行为 —— 宁可启动失败也不带病运行 |
 | **敏感字段脱敏** | `password`、`secret`、`token` 等字段加 `@ToString.Exclude`，防止 `@Data` 生成的 `toString()` 泄露到日志 |
 | **默认值与验证不冲突** | 有默认值的字段（如 `port = 22`）仍可加验证注解；验证针对**绑定后的最终值**，默认值也必须满足约束 |
-| **`@ConstructorBinding` 按需标注** | 构造器绑定对 record 始终生效；普通类**单一构造器**自 Boot 3 起隐式构造器绑定，注解可省略；仅存在**多个构造器**时才需显式指定绑定构造器（本仓库 `StepDefinition` 即此案例：紧凑构造器 + 便捷构造器并存，故显式标注） |
+| **`@ConstructorBinding` 按需标注** | 构造器绑定对 record 始终生效；普通类**单一构造器**自 Boot 3 起隐式构造器绑定，注解可省略；仅存在**多个构造器**（如紧凑构造器 + 便捷构造器并存）时才需显式指定绑定构造器 |
 
 #### `@DefaultValue` 默认值（消灭可空的源头手段）
 
@@ -481,7 +481,7 @@ public class {Feature}Properties {
 | 事实 | 说明 |
 |------|------|
 | **Spring Boot 专属 + 构造器绑定专属** | `@DefaultValue`（`org.springframework.boot.context.properties.bind`）的 `@Target` 为 `PARAMETER`，只被构造器绑定（record / 不可变类）的 `ValueObjectBinder` 消费——**setter 绑定的 `@Data` 类不支持**，等价物是字段初始化器（`private List<X> x = List.of();`）；也管不到 `@Value` 注入（其默认值语法是 `${key:default}`） |
-| **缺失时代入缺省而非 null** | `@DefaultValue("true")` 的字符串值经 ConversionService 转为目标类型；无参 `@DefaultValue` 为「空」语义——集合/Map/数组 → **空集合**，聚合类型 → **递归绑定空实例**（嵌套组件的 `@DefaultValue` 继续生效，如 `Trace(false, false)`） |
+| **缺失时代入缺省而非 null** | `@DefaultValue("true")` 的字符串值经 ConversionService 转为目标类型；无参 `@DefaultValue` 为「空」语义——集合/Map/数组 → **空集合**，聚合类型 → **递归绑定空实例**（嵌套组件的 `@DefaultValue` 继续生效） |
 | **默认值也参与校验** | 默认值代入发生在校验之前，`@Validated` 校验的是兜底后的最终值——默认值自身必须满足约束注解 |
 | **集合形式与显式配置边界** | 集合默认值可用数组形式 `@DefaultValue({"a", "b"})` 或逗号分隔字符串；**显式配置（含空串）优先于默认值**——仅当属性完全缺失时才代入缺省 |
 | **不支持占位符解析** | 值必须是常量字符串，不能写 `${...}` 引用其他属性/环境变量；需占位符默认值时用 `@Value("${key:default}")`（零散项）或 `application.yml` 占位符 `${ENV:default}`（见 `null-check-governance.md` §10） |
@@ -489,12 +489,12 @@ public class {Feature}Properties {
 
 ```java
 @Validated
-@ConfigurationProperties(prefix = "usecase")
-public record UseCaseProperties(
-        @DefaultValue List<@NotNull @Valid UseCaseDefinition> definitions,   // 缺省 → 空集合，消费方直接 for-each
+@ConfigurationProperties(prefix = "{feature}")
+public record {Feature}Properties(
+        @DefaultValue List<@NotNull @Valid {Feature}Definition> definitions,   // 缺省 → 空集合，消费方直接 for-each
         @DefaultValue Map<String, @Min(100) @Max(599) Integer> errorMappings,
-        @DefaultValue("true") boolean report,                                // primitive，类型上不可空
-        @DefaultValue Trace trace) {                                         // 缺省 → Trace(false, false) 递归空实例
+        @DefaultValue("true") boolean enabled,                                 // primitive，类型上不可空
+        @DefaultValue Trace trace) {                                           // 缺省 → 递归空实例
     ...
 }
 ```
@@ -640,7 +640,7 @@ public void createUser(@Valid UserCreateDTO dto) { ... }
 
 ### 2.10 错误消息外化管理（按需启用）
 
-> **按需启用（本项目现状）：** 本项目无国际化需求，现有代码均用中文字面量消息——本节是引入 i18n / 消息外化需求时的规范，未启用前不强制消息键三段式。
+> **按需启用：** 本节是引入 i18n / 消息外化需求时的规范——无国际化需求的项目（消息用本地化字面量）不强制消息键三段式；各项目的启用状态记录于项目 `CLAUDE.md`「规范适配」段。
 
 注解的 `message` 支持三类占位符：注解属性名（`{min}`/`{max}`）、`{validatedValue}`（被拒值）、`${...}` EL 表达式。硬编码消息会耦合文案与代码、无法国际化；启用外化后**注解里只写消息键**：
 
@@ -659,8 +659,8 @@ user.username.size=用户名长度不能超过 {max} 个字符
 ```
 
 **规则（启用后）：**
-- 消息键用 `<域>.<字段>.<约束>` 三段式；对外 API 的错误定位依赖 `ApiResponse` 的 `code` 与拼入 `message` 的字段明细（`api-conventions.md`，本项目信封无 `errors[]` 数组），**不依赖消息文本**
-- 改造存量代码时，散落的中文字面量消息（NC-010，见 `null-check-governance.md` §3）统一收敛到资源文件
+- 消息键用 `<域>.<字段>.<约束>` 三段式；对外 API 的错误定位依赖 `ApiResponse.errors[]` 的 `field` 与机器可读错误码（`api-conventions.md`），**不依赖消息文本**
+- 改造存量代码时，散落的本地化字面量消息（NC-010，见 `null-check-governance.md` §3）统一收敛到资源文件
 
 ### 2.11 校验行为调优
 
@@ -837,7 +837,7 @@ public class OrderService {
 
 **关键规则：**
 - `@NullMarked` 标注在包（`package-info.java`）或类上，范围内所有类型默认 non-null，仅需为可空处加 `@Nullable`
-- 搭配 NullAway 等 null checker 可在编译期强制检查（本项目已接入，集成与代码形态约定见 `java-coding-standard.md` §4.2）
+- 搭配 NullAway 等 null checker 可在编译期强制检查（推荐接入，集成与代码形态约定见 `java-coding-standard.md` §4.2）
 - **Actuator endpoint 参数禁止使用 `org.springframework.lang.Nullable`**，必须改用 `org.jspecify.annotations.Nullable`（SB4 已移除对前者的支持）
 
 **强制要求：** 校验逻辑必须与注解声明的契约保持一致。

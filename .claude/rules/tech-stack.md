@@ -8,9 +8,9 @@ paths:
 ---
 # Tech Stack
 
-**版本：** 1.1（2026-08-19 修订：下游超时基线统一 3s/10s；标注按需条目）
+**版本：** 1.2（2026-08-22 通用化：适用边界注记去项目指称——各项目实际采用的技术与状态记录于项目 `CLAUDE.md`「规范适配」段）
 
-> **适用边界：** Web/Jackson/Validation/RestClient 为本项目现役基线；MySQL / Spring Data JPA / Flyway / Kafka / Spring Cloud Contract 为**引入对应技术后的基线**（当前 usecase-framework 为无持久层的编排框架，DB/消息/契约相关条目暂不适用，落地时按本章执行）。
+> **适用边界：** Web/Jackson/Validation/RestClient 为基础基线；MySQL / Spring Data JPA / Flyway / Kafka / Spring Cloud Contract 为**引入对应技术后的基线**（未引入前相关条目不适用，落地时按本章执行）。
 
 - Java 21（Spring Boot 4 要求 Java 17+，推荐使用 LTS 版本）
 - Spring Boot 4.1.x

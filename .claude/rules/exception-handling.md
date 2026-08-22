@@ -4,7 +4,7 @@ paths:
 ---
 # 异常处理规范
 
-**版本：** 1.3（2026-08-22 修订：新增 §2.1 业务异常表达策略——模式 A（类型化）/ B（错误码枚举）/ C（浅层次折中）的选型判据与禁止混用纪律，本项目标注采用模式 A）
+**版本：** 1.4（2026-08-22 通用化：§2.1 的模式采用标注移出——正文声明「各项目按判据选定并记录于项目 CLAUDE.md」，§3 起示例仍按模式 A 书写并注明替换关系；§6.1/§6.2 信封表述统一 `errors[]` 标准结构；项目特定路径指称移除。此前 1.3：新增 §2.1 业务异常表达策略）
 
 **适用范围：** JDK 21 + Spring Boot 4 + Spring MVC（Servlet 栈）REST API
 
@@ -61,9 +61,9 @@ paths:
 
 > **折中形态（模式 C，行业常见）：** 浅层次语义基类——按**处置类别**分 4~6 个（`NotFoundException` / `ConflictException` / `ValidationException` … extends `BusinessException`），组内用 `ErrorCode` 细化。catch 想粗就粗（按基类）、想细就细（比对 code），兼顾类型级分流与错误目录集中，适合中大型项目。
 
-**纪律：** 选型在项目启动时确定并记入 `CLAUDE.md`；中途切换须全量迁移（业务代码 + 全局处理映射 + 测试断言）；不允许两种模式并存——禁止「既 catch 异常类型又比对 code」的双重判断。
+**纪律：** 选型在项目启动时确定并记入项目 `CLAUDE.md`「规范适配」段；中途切换须全量迁移（业务代码 + 全局处理映射 + 测试断言）；不允许两种模式并存——禁止「既 catch 异常类型又比对 code」的双重判断。
 
-**本项目采用模式 A（类型化领域异常）**，体系结构见 §3。
+**各项目按上表判据选定模式并在自己的 `CLAUDE.md` 中记录**；本文 §3 起的示例采用模式 A（类型化领域异常）书写——选定模式 B 的项目对应替换为 `BusinessException` + `ErrorCode` 形态。
 
 ***
 
@@ -287,7 +287,7 @@ public class GlobalExceptionHandler {
 | 异常 | HTTP | 错误码 | 日志 | 说明 |
 |------|------|--------|------|------|
 | 领域异常（逐异常 handler） | handler 声明 | `ex.getErrorCode()` | WARN | 客户端消息用异常消息（构造时已保证安全） |
-| `MethodArgumentNotValidException` | 400 | `VALIDATION_ERROR` | WARN | `@RequestBody @Valid` 失败；字段明细拼接入 `message`（`rejectedValue` 对敏感字段脱敏为 `***`，信封结构见 `api-conventions.md`） |
+| `MethodArgumentNotValidException` | 400 | `VALIDATION_ERROR` | WARN | `@RequestBody @Valid` 失败；FieldError 的 `rejectedValue` 对敏感字段脱敏为 `***`，字段级明细进 `ApiResponse.errors[]` |
 | `HandlerMethodValidationException` | 400 | `VALIDATION_ERROR` | WARN | **SF 6.1+ 关键变化**：Controller 参数直接注解（类级无 `@Validated`）走内建方法校验，抛此异常而非 `ConstraintViolationException` |
 | `ConstraintViolationException` | 400 | `VALIDATION_ERROR` | WARN | 手动调用 `Validator.validate()` 的编程式校验、旧 AOP 链路残留——出现即甄别是否应迁入内建链路，而非原样保留 |
 | `MethodValidationException` | 400 | `VALIDATION_ERROR` | WARN | **SF 6.1+**：Service Bean 方法级校验（类级 `@Validated` + `MethodValidationPostProcessor` AOP 链路）失败；多为内部前置条件违例，**不逐字段对外暴露**（避免泄漏内部 API 形态），明细只记日志 |
@@ -332,7 +332,7 @@ public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
 
 Spring Framework 6+ 原生支持 RFC 9457/7807 `ProblemDetail` 错误格式（`spring.mvc.problemdetails.enabled=true`，或继承 `ResponseEntityExceptionHandler`）。**项目统一响应信封二选一，禁止混用：**
 
-- 本项目采用 `ApiResponse<T>` 信封（`adapter/in/web/common/`）→ 不启用 ProblemDetail
+- 采用 `ApiResponse<T>` 统一信封（结构见 `api-conventions.md`）→ 不启用 ProblemDetail
 - 全新项目且团队认可 RFC 9457 → 可整体采用 ProblemDetail，替换 `ApiResponse` 错误分支
 
 混用会导致同一 API 的错误体有两种结构，客户端无法编写统一的错误处理逻辑。

@@ -9,7 +9,7 @@ paths:
 
 > **职责边界：** 本文件定义契约测试的目录结构、Groovy DSL 模板、Base Test 类、Checklist。测试分层与包结构见 `test-conventions.md`，API 设计规范（URL/Method/状态码）见 `api-conventions.md`。
 >
-> **适用边界：** 本文件在项目引入 Spring Cloud Contract 依赖后生效；当前 usecase-framework 尚无契约测试基础设施，落地时按本章执行。
+> **适用边界：** 本文件在项目引入 Spring Cloud Contract 依赖后生效；未引入契约测试基础设施的项目落地时按本章执行。
 
 ***
 

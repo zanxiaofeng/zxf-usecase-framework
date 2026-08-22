@@ -4,7 +4,7 @@ paths:
 ---
 # 判空治理规范（NC 规则与改造执行）
 
-**版本：** 1.5（2026-08-22 修订：误区表补 #17「默认值掩盖关键配置缺失」（回合同源规范，callout 条目枚举同步）；此前 1.4：与外部评审修订版核对补强——§10 `@RequestParam(defaultValue)` 行补空串语义对比（空串参数也代入默认值 vs `@DefaultValue` 键存在即不生效））
+**版本：** 1.6（2026-08-22 通用化：信封表述统一 `errors[]` 标准结构（探针/验收/Agent prompt）；项目标识符通用化；§9 表头措辞中性化；项目选型迁至项目 CLAUDE.md「规范适配」段。此前 1.5：误区表补 #17）
 **适用范围：** JDK 21 + Spring Boot 4.1 + Jakarta Validation 3.1
 
 > **职责边界：** 本文件是判空坏味道**识别与改造执行**的唯一权威——分层校验职责模型、NC-001~NC-014 坏味道规则表、BAD/GOOD 对照、改造顺序与验收标准、Agent Prompt 模板。具体机制规范分属各专题文件：声明式/命令式校验见 `validation.md`，校验失败的异常出口见 `exception-handling.md` §6，Optional/Null 安全/Lombok 见 `java-coding-standard.md` §3.3/§4.2/§5.2，DDL 约束见 `db-conventions.md`。冲突时机制细节以对应专题文件为准。
@@ -42,7 +42,7 @@ paths:
 2. **内部校验断言化**——注解覆盖不到的内部判空用 `Assert`/`Objects.requireNonNull` 一行完成，失败即抛异常
 3. **空值语义静态化**——JSpecify `@NullMarked`/`@Nullable` 把「可空/非空」变成可检查的契约（`java-coding-standard.md` §4.2）
 4. **错误响应标准化**——校验失败经唯一 `GlobalExceptionHandler` 出口，统一 `ApiResponse` 信封（`exception-handling.md` §6；**不启用 ProblemDetail**，见 §6.4）
-5. **判空须可归因**（减量目标的判据）——每处运行期判空必须能指明所守卫的信任边界（YAML 绑定、编程式装配入口、下游响应……）；答不上来的防御性判空属多余代码，删除而非保留。例：装配器 `validateUseCase` 对 id/steps 的 `hasText`/`isEmpty` 检查守卫的是编程式装配入口（Bean Validation 够不到 `new UseCaseDefinition(...)` 这条路径），不算多余；Service 对 Controller 已 `@NotBlank` 校验过的字段再判空，才是 NC-005 要消灭的重复设防
+5. **判空须可归因**（减量目标的判据）——每处运行期判空必须能指明所守卫的信任边界（YAML 绑定、编程式装配入口、下游响应……）；答不上来的防御性判空属多余代码，删除而非保留。例：编程式装配入口对字段的手工校验守卫的是 Bean Validation 够不到的 `new XxxDefinition(...)` 这条路径，不算多余；Service 对 Controller 已 `@NotBlank` 校验过的字段再判空，才是 NC-005 要消灭的重复设防
 
 ## 2. 判空坏味道类谱系（扫描地图）
 
@@ -252,14 +252,14 @@ public class OrderService {
 - [ ] 编译通过，无新增 warning
 - [ ] 单元测试与集成测试全部通过；删除的手工判空均有对应注解/断言的测试断言覆盖
 - [ ] 已接入 NullAway 的模块静态分析零新增报错
-- [ ] 手工探针——空白串：对 `@NotBlank` 字段提交 `" "`，确认返回 400 且字段级明细正确拼入 `ApiResponse.message`（本项目信封无 `errors[]` 数组，见 `api-conventions.md`）
+- [ ] 手工探针——空白串：对 `@NotBlank` 字段提交 `" "`，确认返回 400 且 `ApiResponse.errors[]` 字段级错误正确
 - [ ] 手工探针——嵌套 null：嵌套 DTO 字段提交 `null` 与非法值，确认 `@Valid` 级联生效
 - [ ] 手工探针——空集合与缺元素：`items: []` 与 `items: [{}]` 分别触发 `@NotEmpty` 与元素级约束
 - [ ] 手工探针——超长字段：超过 `@Size` 上限的输入返回 400 而非落库或 500
 - [ ] 手工探针——基本类型 null：JSON 显式 `null` 传给基本类型字段，确认被反序列化层拦截（`HttpMessageNotReadableException` → 400）
 - [ ] 手工探针——配置项：故意缺失或注入非法值，确认启动 fail-fast 且 FailureAnalyzer 输出指向具体属性（NC-014）
 - [ ] 反向检查（减量目标）：本次改动**新增**的每处运行期判空都能指明所守卫的信任边界（§1 落地原则 5）；被高层手段（注解校验、`@NullMarked` 契约）覆盖的旧判空已删除，未保留「双保险」
-- [ ] 错误响应结构符合契约：`ApiResponse` 的 `code`/`message` 与 `api-conventions.md` 一致（本项目信封无 `errors[]` 数组）
+- [ ] 错误响应结构符合契约：`ApiResponse` 的 `code`/`message`/`errors[]` 与 `api-conventions.md` 一致
 - [ ] 异常通道分离：类型化领域异常（业务规则）与参数校验异常（`VALIDATION_ERROR`）返回不同错误码，互不混用
 - [ ] DB 约束抽查：改造涉及的字段在 DDL 中均有对应 `NOT NULL`/长度/唯一约束（NC-013）
 
@@ -289,8 +289,8 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 
 【异常与错误契约】业务错误一律抛类型化领域异常（domain/exception/ + CODE 常量，
 见 exception-handling.md §3），禁止引入统一 BizException 或错误码枚举单体。
-错误响应对外统一为 ApiResponse 信封（code/message，字段明细拼 message——本项目信封
-无 errors[] 数组，见 api-conventions.md），禁止启用 ProblemDetail（exception-handling.md §6.4）。
+错误响应对外统一为 ApiResponse 信封（code/message/errors[]，见 api-conventions.md），
+禁止启用 ProblemDetail（exception-handling.md §6.4）。
 
 【执行约束（违反即停止并报告）】
 1. 不改业务语义：同一输入改造前后的「拒绝/放行」判定必须一致。
@@ -312,7 +312,7 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 
 判空治理各手段按**拦截时点**形成梯队（梯队是修复成本梯度而非优劣排名：每层启用对应手段，高层不替代低层）：
 
-| 手段 | 拦截时点 | 覆盖场景 | 本仓库规范出处 |
+| 手段 | 拦截时点 | 覆盖场景 | 规范出处 |
 |------|---------|---------|--------------|
 | JSpecify + NullAway 静态分析 | 编译期 | 代码内部空安全契约 | `java-coding-standard.md` §4.2 |
 | 配置属性绑定校验 | 启动期 | 配置边界层 | `validation.md` §2.8 |
@@ -365,7 +365,7 @@ Hibernate Validator，版本由 Boot BOM 托管）、JDK 21。禁止引入 javax
 | 手段 | 适用 | 注意 |
 |------|------|------|
 | `@DefaultValue`（构造器参数） | `@ConfigurationProperties` record / 不可变类 | 机制与边界见 `validation.md` §2.8（Boot 专属、`@Target(PARAMETER)`、无参空语义） |
-| 字段初始化器 | setter 绑定的 `@Data` 配置类、Jackson 绑定的 step config | 本仓库 step config 的既定模式（`framework.steps.config` 包） |
+| 字段初始化器 | setter 绑定的 `@Data` 配置类、Jackson 绑定的配置类 | setter 绑定场景的既定模式 |
 | `@RequestParam(defaultValue = "20")` | Controller 可选查询参数 | 参数保证非 null，可用基本类型接收；隐含 `required = false`，且**空串参数也代入默认值**——与 `@DefaultValue`「键存在即使为空即不生效」语义相反（`validation.md` §2.8） |
 | `application.yml` 占位符 `${ENV:default}` | 环境变量缺省 | 默认值进配置文件而非代码 |
 | `Environment.getProperty(key, type, default)` | 编程式读取的兜底 | 仅无法类型化时使用 |

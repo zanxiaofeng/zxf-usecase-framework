@@ -6,9 +6,9 @@ paths:
 ---
 # TDD Workflow
 
-**版本：** 1.1（2026-08-19 修订：标注工程结构适用边界）
+**版本：** 1.2（2026-08-22 通用化：工程结构边界注记去项目指称——各项目的基础设施落地状态记录于项目 `CLAUDE.md`「规范适配」段）
 
-> **工程结构边界：** 本流程引用的 `docs/requirements/`、`src/test/resources/sql-data/`、`test-data/`、`mock-data/`、`support/mocks/`、`scripts/run-contract-tests.sh` 等结构在对应基础设施（持久层 / WireMock / 契约测试）落地后才存在。当前 usecase-framework 无持久层：涉及 `@Sql` 种子数据与 DatabaseVerifier 的步骤跳过，e2e 数据以内存适配器 / stub 端点提供；`CLAUDE.md Sprint status` 更新以现有 `docs/` 文档为准。
+> **工程结构边界：** 本流程引用的 `docs/requirements/`、`src/test/resources/sql-data/`、`test-data/`、`mock-data/`、`support/mocks/`、`scripts/run-contract-tests.sh` 等结构在对应基础设施（持久层 / WireMock / 契约测试）落地后才存在。未引入持久层的项目：涉及 `@Sql` 种子数据与 DatabaseVerifier 的步骤跳过，e2e 数据以内存适配器 / stub 端点提供。
 
 ## Step-by-Step (Strict Order)
 

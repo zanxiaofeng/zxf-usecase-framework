@@ -5,7 +5,7 @@ paths:
 ---
 # API Design Conventions
 
-**版本：** 1.1（2026-08-19 修订：错误信封结构与其余规范统一；触发面收窄）
+**版本：** 1.2（2026-08-22 通用化：Error Response 统一为含 `errors[]` 标准结构——字段级明细进 `errors[]`、`message` 只放汇总描述，存量「明细拼 message」变体项目须统一切换；项目选型记录迁至项目 CLAUDE.md「规范适配」段）
 
 > Controller、Request/Response DTO、WebMapper、ApiResponse、GlobalExceptionHandler 均位于入站适配器 `infrastructure/adapter/in/web/`（见 `architecture.md` §5.4）。
 
@@ -42,13 +42,16 @@ paths:
 {
   "code": "VALIDATION_ERROR",
   "data": null,
-  "message": "Request validation failed: email must be a valid email",
+  "message": "Request validation failed",
   "timestamp": "2026-04-27T12:00:00+08:00",
-  "traceId": "abc123"
+  "traceId": "abc123",
+  "errors": [
+    { "field": "email", "message": "must be a valid email", "rejectedValue": "invalid" }
+  ]
 }
 ```
 
-> **信封结构与 `exception-handling.md` §6.1、`contract-test.md` 保持一致**：字段级校验明细（field/message，`rejectedValue` 对敏感字段脱敏为 `***`）**拼接入 `message`** 返回，不使用独立的 `errors` 数组字段。如团队确需结构化字段明细，须在 `ApiResponse` 增加可选 `errors` 字段并**全项目统一切换**——禁止两种结构混用。
+> **信封结构与 `exception-handling.md` §6.1、`contract-test.md` 保持一致**：字段级校验明细进 `errors[]` 数组（field/message，`rejectedValue` 对敏感字段脱敏为 `***`），`message` 只放汇总描述——禁止「明细拼 message」与「errors[] 数组」两种结构混用；存量代码若为旧变体，须全项目统一切换。
 
 ## Downstream Side Effects
 When an endpoint triggers a downstream call, document it in the API spec:
