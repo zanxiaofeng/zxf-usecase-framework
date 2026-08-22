@@ -4,7 +4,7 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.8（2026-08-22 修订：§5.2 构造器小节补 Lombok `addNullAnnotations = jspecify` 选项说明（1.18.46 实证存在）与未启用理由——与 `copyableAnnotations` 的分工）
+**版本：** 3.9（2026-08-22 修订：§4.2 两种世界观补裁定标准「绑定与校验是否分离」——绑定+校验原子化入口（StepConfigs.bind 型）的 record 可声明非空组件，经全库 null check 审计确认既有代码符合）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
@@ -447,7 +447,7 @@ public class OrderService {
 - `@NullMarked` 首选**包级**（`package-info.java`），范围内所有类型默认 non-null；类级标注仅用于过渡期的存量类。新增包必须随包创建 `package-info.java`
 - 容器/泛型的可空性标注在类型实参位置：`Map<String, @Nullable Object>`（值可空）、`List<@Nullable Item>`；可空泛型返回写 `<T> @Nullable T`
 - 覆写框架接口时，参数/返回值的可空性必须与父接口声明对齐（父接口 `@Nullable` 参数，覆写处同样 `@Nullable`），否则静态分析结果与运行期行为脱节
-- 绑定类上 `@NotBlank` 与 `@Nullable` **同框不是冲突**，两者管不同时刻：jakarta 约束在绑定后的运行期校验拒绝 null/空白；jspecify `@Nullable` 表达「校验完成前实例字段确实可空」（绑定器可省略该属性）。按消费方式二选一世界观并保持类内一致：record 绑定类取**校验前真相**（组件 `@Nullable` + 约束注解，消费方按可空读）；`@Data` 配置类取**校验后真相**（字段非空 + 类级 `@SuppressWarnings("NullAway.Init")`，消费方只见已校验实例、不做 null check）。注意 jakarta 规范：除 `@NotNull`/`@NotBlank`/`@NotEmpty` 外所有约束对 null 一律放行——「可选但须合规」写 `@Nullable` + `@Min/@Max`，「必填」写 `@NotBlank` 系
+- 绑定类上 `@NotBlank` 与 `@Nullable` **同框不是冲突**，两者管不同时刻：jakarta 约束在绑定后的运行期校验拒绝 null/空白；jspecify `@Nullable` 表达「校验完成前实例字段确实可空」（绑定器可省略该属性）。按消费方式二选一世界观并保持类内一致：record 绑定类取**校验前真相**（组件 `@Nullable` + 约束注解，消费方按可空读）；`@Data` 配置类取**校验后真相**（字段非空 + 类级 `@SuppressWarnings("NullAway.Init")`，消费方只见已校验实例、不做 null check）。两种世界观的裁定标准是**绑定与校验是否分离**：`@ConfigurationProperties` 属两阶段（绑定器与 Validator 各自独立触发，校验完成前实例可能被读到）→ record 取校验前真相；**绑定与校验原子化**的入口（绑定或校验失败即抛、消费方只拿校验通过实例，如 `StepConfigs.bind` 的 convertValue + validate 一体）不存在校验前窗口 → record 可直接声明**非空组件**（`@NotBlank`/`@NotEmpty` 对 null 同样拒绝，null 无法逃逸到消费方）。注意 jakarta 规范：除 `@NotNull`/`@NotBlank`/`@NotEmpty` 外所有约束对 null 一律放行——「可选但须合规」写 `@Nullable` + `@Min/@Max`，「必填」写 `@NotBlank` 系
 - 绑定类上还有**第三条路，且优先于上述两种世界观**：配置项缺失有合理缺省语义时（空集合、`false`、递归空实例），用 `@DefaultValue`（构造器绑定）或字段初始化器（setter 绑定）代入缺省——组件既不加 `@Nullable` 也不加约束注解，null 从源头不存在，消费方零判空。这是减量成本最低的手段（机制与选型边界见 `validation.md` §2.8；横切 Java/Spring 各层的默认值手段完整目录——`Optional.orElse` 系、`Objects.requireNonNullElse`、字段初始化器、`@RequestParam(defaultValue)` 等及适用边界——见 `null-check-governance.md` §10）；只有「缺失即错误」的必填项才落入两种世界观
 - 新代码推荐 JSpecify（`org.jspecify.annotations`），`jakarta.annotation` 仍可用
 - **禁止** `org.springframework.lang.Nullable`（SB4 已移除支持，Actuator endpoint 会报错）
