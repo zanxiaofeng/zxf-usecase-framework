@@ -4,7 +4,7 @@ paths:
 ---
 # Code Review Checklist
 
-**版本：** 1.2（2026-08-20 修订：同步 sibling 判空治理变更——异常条目修正为类型化体系、新增 3 条判空 checklist）
+**版本：** 1.3（2026-08-22 修订：异常处理节标题补 §2.1 业务异常表达模式选型指针）
 
 > **职责边界：** 本文件是 Code Review 的**统一入口**，汇总各专题文件的审查要点，不重复具体规则定义——每条指向对应规范文件的具体章节。
 
@@ -65,7 +65,7 @@ paths:
 - [ ] Null 安全是否采用三层防御（JSpecify `@NullMarked` + `Optional` + `Assert`）？（→ `java-coding-standard.md` §4.2）
 - [ ] String 字段是否用 `@NotBlank` 而非 `@NotNull`、嵌套配置是否加 `@Valid`？（NC-006/NC-014 → `null-check-governance.md` §3）
 
-### 异常处理（→ `exception-handling.md`）
+### 异常处理（→ `exception-handling.md`，业务异常表达模式选型见其 §2.1）
 - [ ] 业务错误是否全部通过类型化领域异常（`domain/exception/` + `CODE` 常量）表达？
 - [ ] 新增业务错误是否新增了独立异常类（而非只加错误码枚举值或裸 `RuntimeException`）？
 - [ ] Controller 是否零 try-catch？

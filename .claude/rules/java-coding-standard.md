@@ -4,11 +4,11 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.9（2026-08-22 修订：§4.2 两种世界观补裁定标准「绑定与校验是否分离」——绑定+校验原子化入口（StepConfigs.bind 型）的 record 可声明非空组件，经全库 null check 审计确认既有代码符合）
+**版本：** 3.10（2026-08-22 修订：§5.1 工具表补默认值手段 4 行（与 null-check-governance §10 对齐）；§5.2 lombok.addNullAnnotations 条目按行业核实改写——配置键自 1.18.12、jspecify 值自 1.18.38、NullAway 官方 best-effort 立场）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
-> **相关规范：** 校验与契约编程（声明式 Bean Validation / 命令式断言 / 不变式）见 `validation.md`；对象健身操（OO 设计约束）见 `java-object-calisthenics.md`；SOLID 原则与迪米特法则（LoD）见 `java-solid-lod.md`；异常处理（分类/抛出/捕获/全局处理）见 `exception-handling.md`；日志规范见 `logging.md`。
+> **相关规范：** 校验与契约编程（声明式 Bean Validation / 命令式断言 / 不变式）见 `validation.md`；对象健身操（OO 设计约束）见 `java-object-calisthenics.md`；SOLID 原则与迪米特法则（LoD）见 `java-solid-lod.md`；异常处理（分类/§2.1 业务异常模式选型/抛出/捕获/全局处理）见 `exception-handling.md`；日志规范见 `logging.md`。
 
 ***
 
@@ -523,7 +523,10 @@ List<String> collected = stream.collect(Collectors.toUnmodifiableList());
 | Base64 编码 | Commons-codec `Base64.encodeBase64String` | `java.util.Base64` (JDK 8+) |
 | 数值范围限制 | `Math.min(Math.max(val, min), max)` | `Math.clamp(val, min, max)` (JDK 21) |
 | 字符串默认值 | `str != null ? str : ""` 三元 | Spring `StringUtils.defaultString(str)` |
-| 对象默认值 | `obj != null ? obj : default` 三元 | Spring `ObjectUtils.defaultIfNull(obj, default)` |
+| 对象默认值 | `obj != null ? obj : default` 三元 | Spring `ObjectUtils.defaultIfNull(obj, default)` 或 JDK `Objects.requireNonNullElse(obj, default)`（惰性版 `requireNonNullElseGet`） |
+| Map 取值默认值 | 手动 `containsKey` 判断 | `map.getOrDefault(key, default)` |
+| 请求参数默认值 | `required = false` + 使用处判空 | `@RequestParam(defaultValue = "...")`（对空串参数同样生效） |
+| 配置属性默认值 | 使用处手工判空兜底 | setter 绑定用字段初始化；record/构造器绑定用 `@DefaultValue`（仅构造器参数，机制与边界见 `validation.md` §2.8；横切各层的默认值手段完整目录见 `null-check-governance.md` §10） |
 | 类型判断分支 | `if (obj instanceof X) { X x = (X) obj; ... }` | `if (obj instanceof X x) { ... }` (JDK 16+) |
 | 获取集合首/末元素 | 手动 `get(0)` / `get(size()-1)` | `sequencedCollection.getFirst()` / `getLast()` (JDK 21) |
 
@@ -570,7 +573,7 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
 **规则：**
 - 字段上的 `@Nullable` 等空值注解须经根目录 `lombok.config` 的 `lombok.copyableAnnotations` 复制到生成构造器的参数上——替换手写构造器前先确认该配置已覆盖所用注解，避免丢失参数级空值契约
-- Lombok 另提供 `lombok.addNullAnnotations = jspecify`（lombok 1.18.46 实证存在）：生成代码（getter、构造器参数等）自动附加 JSpecify `@NonNull`/`@Nullable`（TYPE_USE）标注。**本项目未启用**——`@NullMarked` 包内类型默认非空，可空契约已由 `copyableAnnotations` 复制路径覆盖，叠加启用收益有限且会与手写 `@Nullable` 并存产生重复标注风险；启用与否变更须重新跑 NullAway 全量验证
+- Lombok 另提供 `lombok.addNullAnnotations = jspecify`（配置键自 lombok 1.18.12 存在，`jspecify` 内置值自 1.18.38 支持、为官方推荐值之一）：让生成代码（getter、构造器参数等）自动附加 JSpecify 空值标注。**收益与风险（行业核实）：** 收益真实——不启用时 `@Nullable` 字段的生成 getter 在 `@NullMarked` 包内被 NullAway 视为非空返回，静态分析漏报；风险同样真实——NullAway 官方对 Lombok 仅 best-effort 兼容（README：不特别推荐与 Lombok 搭配），已知坑有生成代码上 JSpecify 注解的 TYPE_USE 识别问题（NullAway #917）与 `@Builder` 支持有限（#321）。**选型：** Lombok ≥1.18.38 且生成代码确实向消费方暴露 `@Nullable` 契约 → 启用；Lombok 暴露面小 → 不启用是合理保守选择。**本项目未启用**——Lombok 仅限 application/infrastructure 层 Bean 类，`@NullMarked` 包内类型默认非空，可空契约已由 `copyableAnnotations` 复制路径覆盖；启用与否变更须重新跑 NullAway 全量验证
 - Lombok 生成构造器**不受**其他手写构造器影响（与 `@Data` 隐含的构造器不同），手写与生成构造器只要签名不冲突即可共存——示例：带默认值的便利构造器（委托静态工厂计算默认依赖）手写成无参构造器，`@RequiredArgsConstructor` 同时生成全参构造器
 - 含实际逻辑的构造器（参数校验、防御性复制、默认值计算）仍需手写，不适用本条
 

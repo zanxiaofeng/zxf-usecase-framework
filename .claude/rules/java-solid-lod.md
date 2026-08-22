@@ -4,7 +4,7 @@ paths:
 ---
 # Java SOLID 与迪米特法则（LoD）
 
-**版本：** 1.1（2026-08-20 修订：异常示例措辞对齐类型化领域异常体系）
+**版本：** 1.2（2026-08-22 修订：§2.3 接口契约条目补 exception-handling.md §2.1 业务异常模式选型指针）
 **生效日期：** 2026-08-19
 **来源：** Robert C. Martin 整理的 SOLID 原则（SRP/OCP/LSP/ISP/DIP）；Ian Holland 提出的迪米特法则（Law of Demeter）
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
@@ -116,7 +116,7 @@ public class PaymentRouter {
 3. **接口契约（强制部分）** —— 实现类必须满足接口声明的契约：
    - 不得强化前置条件（接口说接受任意正数，实现不能只接受偶数）
    - 不得弱化后置条件（接口承诺非空返回，实现不能返回 null / 空）
-   - 不得抛出接口未声明的异常类型（业务错误用类型化领域异常：`domain/exception/` + `CODE` 常量，见 `exception-handling.md` §3）
+   - 不得抛出接口未声明的异常类型（业务错误用类型化领域异常：`domain/exception/` + `CODE` 常量，见 `exception-handling.md` §3；两种表达模式的选型判据见该文件 §2.1）
    - 不得对「不需要的能力」抛出 `UnsupportedOperationException` —— 那是 ISP 问题（§2.4），应拆接口
 
 ```java

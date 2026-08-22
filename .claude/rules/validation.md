@@ -4,11 +4,11 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
-**版本：** 1.5（2026-08-22 修订：§2.8 与外部评审修订版核对补强——机制表补「不支持占位符解析」；关键规则表补「`@ConstructorBinding` 单构造器可省略」；校验失败行为精确为 `BindValidationException` → `ConfigurationPropertiesBindException` 包装链（Boot 4.1.0 字节码实证））
+**版本：** 1.6（2026-08-22 修订：§4 注解来源表纠错——`@CheckForNull` 实为 SpotBugs/JSR-305 注解而非 jakarta.annotation，禁止新引入；jakarta 注解拼写统一为 `@Nonnull`；§2.8 五事实表补「与 `@Valid` 正交」行、checklist 补 `@DefaultValue` 选型条目（回合同源规范）。此前 1.5：§2.8 与外部评审修订版核对补强——机制表补「不支持占位符解析」；关键规则表补「`@ConstructorBinding` 单构造器可省略」；校验失败行为精确为 `BindValidationException` → `ConfigurationPropertiesBindException` 包装链（Boot 4.1.0 字节码实证））
 
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
-> **职责边界：** 本文件定义参数校验的**完整规范**——声明式 Bean Validation（Controller / Service / ConfigurationProperties）和命令式断言（Domain Entity / VO / 内部不变式）。全局异常处理见 `exception-handling.md`，Controller 层 `@PathVariable` / 分页参数规范见 `api-conventions.md`。判空坏味道识别（NC 规则表）与存量代码改造执行流程见 `null-check-governance.md`。
+> **职责边界：** 本文件定义参数校验的**完整规范**——声明式 Bean Validation（Controller / Service / ConfigurationProperties）和命令式断言（Domain Entity / VO / 内部不变式）。全局异常处理与业务异常表达模式选型（§2.1）见 `exception-handling.md`，Controller 层 `@PathVariable` / 分页参数规范见 `api-conventions.md`。判空坏味道识别（NC 规则表）与存量代码改造执行流程见 `null-check-governance.md`。
 
 ***
 
@@ -476,7 +476,7 @@ public class {Feature}Properties {
 
 #### `@DefaultValue` 默认值（消灭可空的源头手段）
 
-**机制三事实：**
+**机制六事实：**
 
 | 事实 | 说明 |
 |------|------|
@@ -485,6 +485,7 @@ public class {Feature}Properties {
 | **默认值也参与校验** | 默认值代入发生在校验之前，`@Validated` 校验的是兜底后的最终值——默认值自身必须满足约束注解 |
 | **集合形式与显式配置边界** | 集合默认值可用数组形式 `@DefaultValue({"a", "b"})` 或逗号分隔字符串；**显式配置（含空串）优先于默认值**——仅当属性完全缺失时才代入缺省 |
 | **不支持占位符解析** | 值必须是常量字符串，不能写 `${...}` 引用其他属性/环境变量；需占位符默认值时用 `@Value("${key:default}")`（零散项）或 `application.yml` 占位符 `${ENV:default}`（见 `null-check-governance.md` §10） |
+| **与 `@Valid` 正交** | 无值形式 `@DefaultValue` 保证嵌套对象绑定非 null 实例，`@Valid` 负责级联校验其内部约束——两者各司其职，无值形式不能替代 `@Valid` |
 
 ```java
 @Validated
@@ -805,10 +806,11 @@ public class BankAccount {
 
 | 注解 | 来源 | 用途 |
 |------|------|------|
-| `@NonNull` / `@Nullable` | `jakarta.annotation` (Jakarta EE 11) | 应用代码标准注解（SB4 仍可用） |
+| `@Nonnull` / `@Nullable` | `jakarta.annotation` (Jakarta EE 11) | 应用代码标准注解（SB4 仍可用） |
 | `@Nullable` / `@NullMarked` | `org.jspecify.annotations` (JSpecify) | **SB4 框架首选**，见下方 JSpecify 小节 |
-| `@Nonnull` / `@CheckForNull` | `jakarta.annotation` | Jakarta 注解 |
-| `@NonNull` | `lombok` | Lombok 项目使用 |
+| `@NonNull` | `lombok` | Lombok 项目使用（见 `java-coding-standard.md` §5.2） |
+
+> **注意：** `@CheckForNull` 不属于 `jakarta.annotation`（Jakarta EE 11 仅含 `@Nonnull`/`@Nullable`），它来自 SpotBugs / JSR-305（`edu.umd.cs.findbugs.annotations`），禁止新引入。
 
 > **注意：** Spring Boot 4 基于 Jakarta EE 11，`javax.*` 工件已完全移除（非 deprecated）。应用代码统一使用 `jakarta.annotation`，禁止使用旧版 `javax.annotation`。
 
@@ -881,6 +883,7 @@ void updateUser_InvalidAge_ShouldThrowException(int invalidAge) {
 
 - [ ] DTO / `@ConfigurationProperties` 字段是否用 Bean Validation 注解（而非手动 `Assert`）？
 - [ ] `@ConfigurationProperties` 类是否加了 `@Validated`？嵌套配置是否加了 `@Valid`？
+- [ ] record / 构造器绑定配置类的默认值是否用 `@DefaultValue`（而非字段初始化）？关键配置是否未滥用默认值？（§2.8）
 - [ ] Controller 是否用 `@Valid` / `@Validated` 触发验证，而非手动校验？
 - [ ] 验证注解是否优先加在 Bean 字段上，而非方法参数上？
 - [ ] 嵌套对象是否加了 `@Valid` 级联验证？

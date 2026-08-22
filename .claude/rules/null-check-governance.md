@@ -4,7 +4,7 @@ paths:
 ---
 # 判空治理规范（NC 规则与改造执行）
 
-**版本：** 1.4（2026-08-22 修订：与外部评审修订版核对补强——§10 `@RequestParam(defaultValue)` 行补空串语义对比（空串参数也代入默认值 vs `@DefaultValue` 键存在即不生效））
+**版本：** 1.5（2026-08-22 修订：误区表补 #17「默认值掩盖关键配置缺失」（回合同源规范，callout 条目枚举同步）；此前 1.4：与外部评审修订版核对补强——§10 `@RequestParam(defaultValue)` 行补空串语义对比（空串参数也代入默认值 vs `@DefaultValue` 键存在即不生效））
 **适用范围：** JDK 21 + Spring Boot 4.1 + Jakarta Validation 3.1
 
 > **职责边界：** 本文件是判空坏味道**识别与改造执行**的唯一权威——分层校验职责模型、NC-001~NC-014 坏味道规则表、BAD/GOOD 对照、改造顺序与验收标准、Agent Prompt 模板。具体机制规范分属各专题文件：声明式/命令式校验见 `validation.md`，校验失败的异常出口见 `exception-handling.md` §6，Optional/Null 安全/Lombok 见 `java-coding-standard.md` §3.3/§4.2/§5.2，DDL 约束见 `db-conventions.md`。冲突时机制细节以对应专题文件为准。
@@ -407,5 +407,6 @@ private int timeout = 30;
 | 14 | 在 getter 中返回防御性副本或空对象来代替判空约定 | 掩盖空语义：调用方无法区分「无值」与「空值」 | 用 `@Nullable` 或 `Optional` 显式表达返回空语义；集合返回不可变空集合 `List.of()`（`java-coding-standard.md` §4.3） |
 | 15 | 用散落 `@Value` 注入配置并在使用处手工判空 | 无校验通道、无配置元数据，key 拼错或缺失到运行期才暴露（NC-014） | 收敛为 `@ConfigurationProperties` + `@Validated`（`validation.md` §2.8），启动期 fail-fast；仅确需 SpEL 时保留 `@Value` |
 | 16 | 认为嵌套配置属性不加 `@Valid` 也会被校验 | Boot 3.4+ 严格遵循规范，缺 `@Valid` 的嵌套属性被静默跳过，启动照常成功而校验未执行（NC-014） | 嵌套配置对象的字段/record 组件必须加 `@Valid`，与 DTO 级联规则一致（`validation.md` §2.8） |
+| 17 | 给关键配置设默认值（`@DefaultValue`/字段初始化）掩盖缺失 | 配置漏配被默认值静默吞掉，系统以错误配置带病运行，问题推迟到更晚才暴露 | 关键配置缺失应 fail-fast（`@NotBlank` 无默认值）；默认值仅用于「有合理回退」的可选项（适用边界见 §10，机制见 `validation.md` §2.8） |
 
-> 第 2、9、10 条是「通道与边界」问题，扫描无法发现，只能依赖评审；第 5、6、11、12、13、15、16 条有对应 NC 规则可工具拦截。命中率最高的第 5、6、11 条可作重点宣讲项。
+> 第 2、9、10、17 条是「通道与边界」问题，扫描无法发现，只能依赖评审；第 5、6、11、12、13、15、16 条有对应 NC 规则可工具拦截。命中率最高的第 5、6、11 条可作重点宣讲项。

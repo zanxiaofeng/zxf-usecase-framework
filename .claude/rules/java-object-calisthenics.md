@@ -4,7 +4,7 @@ paths:
 ---
 # Java 对象健身操（Object Calisthenics）
 
-**版本：** 1.0
+**版本：** 1.1
 **生效日期：** 2026-07-17
 **来源：** Jeff Bay 发表于《The ThoughtWorks Anthology》的 "Object Calisthenics" 练习（共 9 条规则）
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
@@ -290,3 +290,4 @@ public void recordLoginFailure() {
 | §2.4 集合一等公民 | architecture.md §3.1 聚合根通过领域方法操作关联 |
 | §2.6 不缩写 | java-coding-standard.md §2.1 命名规范 |
 | §2.1 一层缩进 / §2.2 不用 else | java-coding-standard.md §1.1 可读性第一原则 |
+| §2.5 一行一个点 / §2.9 Tell, Don't Ask | java-solid-lod.md §2.6 迪米特法则（功能分配视角） |
