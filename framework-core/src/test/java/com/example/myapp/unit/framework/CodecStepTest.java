@@ -118,4 +118,17 @@ class CodecStepTest {
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("config 'algorithm'");
     }
+
+    @Test
+    void blankAsIsRejectedByDeclarativeConstraint() {
+        // @Pattern（非 @NotBlank）：as 缺省（null）写回 payload 须放行，仅拒绝显式配置空白值的手滑
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("algorithm", "base64url");
+        config.put("as", " ");
+
+        assertThatThrownBy(() -> encoderFactory.create(new StepDefinition(
+                "bad", "encoder", null, config)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("config 'as' must not be blank when set");
+    }
 }

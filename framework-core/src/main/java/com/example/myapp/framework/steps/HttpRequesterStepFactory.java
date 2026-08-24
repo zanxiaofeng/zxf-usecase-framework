@@ -1,8 +1,10 @@
 package com.example.myapp.framework.steps;
 
 import java.util.Map;
+import java.util.Set;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestClient;
 
 import com.example.myapp.framework.assemble.StepConfigs;
@@ -21,6 +23,10 @@ import com.example.myapp.framework.steps.config.HttpRequesterConfig;
 @RequiredArgsConstructor
 public final class HttpRequesterStepFactory implements StepFactory {
 
+    /** 标准 HTTP 方法白名单：Jackson 绑定 HttpMethod 走 valueOf 语义（SF7 对未知方法名静默构造自定义实例），
+     *  拼写错误（如 GTE）与小写变体（如 get，不等同 GET 常量）在此装配期显式拦截（与 UseCaseAssembler 的 endpoint 白名单同构） */
+    private static final Set<HttpMethod> STANDARD_HTTP_METHODS = Set.of(HttpMethod.values());
+
     private final RestClient restClient;
     private final Map<String, AuthHandler> authHandlers;
     private final StepExpressionEvaluator evaluator;
@@ -34,6 +40,12 @@ public final class HttpRequesterStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         HttpRequesterConfig config = StepConfigs.bind(definition, HttpRequesterConfig.class);
         String name = definition.nameOr("httpRequester");
+
+        if (!STANDARD_HTTP_METHODS.contains(config.getMethod())) {
+            throw new UseCaseAssemblyException(
+                    "step [%s]: method [%s] is not a standard HTTP method (expected one of %s)"
+                            .formatted(name, config.getMethod(), STANDARD_HTTP_METHODS));
+        }
 
         AuthHandler authHandler = null;
         Map<String, Object> authOptions = Map.of();

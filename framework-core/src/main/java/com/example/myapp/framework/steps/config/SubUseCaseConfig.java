@@ -1,6 +1,7 @@
 package com.example.myapp.framework.steps.config;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 
@@ -17,7 +18,9 @@ public class SubUseCaseConfig {
     @NotBlank
     private String input = "#payload";
 
-    /** 结果写入 #vars 的旁路键；缺省写回 payload（串联模式） */
+    /** 结果写入 #vars 的旁路键；缺省写回 payload（串联模式）；@Pattern（非 @NotBlank）——null 表示未配置
+     *  须放行，仅拒绝显式配置了空白值的手滑 */
+    @Pattern(regexp = "\\S+", message = "must not be blank when set")
     private @Nullable String as;
 
     /** true 时隔离上下文调用（子不污染父 vars/payload） */

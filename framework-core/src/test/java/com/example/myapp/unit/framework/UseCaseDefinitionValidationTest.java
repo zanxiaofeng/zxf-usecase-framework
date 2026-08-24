@@ -41,6 +41,20 @@ class UseCaseDefinitionValidationTest {
     }
 
     @Test
+    void blankStepNameTypeRef_areRejected() {
+        // @Pattern（非 @NotBlank）：null 表示未配置（name 缺省取 type、type/ref 二选一）须放行，
+        // 显式配置空白值在 YAML 绑定期拒绝；type/ref 是否二选一属装配器交叉规则，BV 层不管
+        StepDefinition blank = new StepDefinition(" ", " ", " ", Map.of());
+        UseCaseDefinition definition = new UseCaseDefinition("demo", null, true, null, List.of(blank));
+
+        assertThat(validator.validate(propertiesOf(definition)))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .contains("definitions[0].steps[0].name",
+                        "definitions[0].steps[0].type",
+                        "definitions[0].steps[0].ref");
+    }
+
+    @Test
     void emptySteps_isRejected() {
         UseCaseDefinition definition = new UseCaseDefinition("demo", null, false, null, List.of());
 

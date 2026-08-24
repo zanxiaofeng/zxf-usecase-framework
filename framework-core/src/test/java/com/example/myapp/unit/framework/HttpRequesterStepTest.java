@@ -17,6 +17,7 @@ import com.example.myapp.framework.auth.NoAuthHandler;
 import com.example.myapp.framework.core.Step;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.exception.HttpStepException;
+import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.steps.HttpRequesterStepFactory;
 
@@ -98,5 +99,22 @@ class HttpRequesterStepTest {
         assertThatThrownBy(() -> step.execute(contextWithPathId()))
                 .isInstanceOf(HttpStepException.class)
                 .satisfies(e -> assertThat(((HttpStepException) e).getDownstreamStatus()).isEqualTo(500));
+    }
+
+    @Test
+    void nonStandardMethodIsRejectedAtAssembly() {
+        // SF7 的 HttpMethod.valueOf 对未知方法名静默构造自定义实例（Jackson 绑定同源）：
+        // 拼写错误（GTE）与小写变体（get，不等于 GET 常量）由装配期标准方法白名单拦截，
+        // 与 UseCaseAssembler 的 endpoint.method 白名单同构
+        for (String bad : new String[] {"GTE", "get"}) {
+            Map<String, Object> config = new LinkedHashMap<>();
+            config.put("method", bad);
+            config.put("url", "http://credit.internal/scores");
+
+            assertThatThrownBy(() -> new HttpRequesterStepFactory(RestClient.create(), authHandlers, evaluator)
+                    .create(new StepDefinition("fetchCredit", "httpRequester", null, config)))
+                    .isInstanceOf(UseCaseAssemblyException.class)
+                    .hasMessageContaining("is not a standard HTTP method");
+        }
     }
 }
