@@ -31,9 +31,9 @@ import com.example.myapp.framework.steps.StarterStep;
  * <ul>
  *   <li>管道执行前往 biz 关键数据区写入 {@code traceId}（取 X-Request-Id 请求头，缺省生成 UUID），
  *       并随 ApiResponse.traceId 回填；</li>
- *   <li>管道结束后清理 starter 写入的 MDC（{@code biz.*} 前缀），防止线程复用串号；</li>
- *   <li>异常 → HTTP 响应的映射委托 {@link ErrorResponseMapper}（等价于 @RestControllerAdvice，
- *       自包含于 router 以适配函数式端点）。</li>
+ *   <li>管道结束后清理 starter 写入的 MDC（{@code biz.*} 前缀），防止线程复用串号；
+ *       异常 → HTTP 响应的映射（委托 {@link ErrorResponseMapper}，等价于 @RestControllerAdvice）
+ *       在清理之前执行，保证失败日志携带 traceId 现场。</li>
  * </ul>
  */
 public final class UseCaseRouterFactory {
@@ -72,7 +72,7 @@ public final class UseCaseRouterFactory {
             // "No routes registered"，导致整个上下文启动失败
             return request -> Optional.empty();
         }
-        builder.onError(thrown -> true, errorMapper::toErrorResponse);
+        // 异常映射内联在 invoke 的 catch 中（须在 MDC 清理前执行以保留日志现场），无需 onError 注册
         return builder.build();
     }
 
@@ -86,15 +86,23 @@ public final class UseCaseRouterFactory {
         seedTraceId(context, request);
         request.attributes().put(CONTEXT_ATTRIBUTE, context);
         try {
-            Object payload = useCase.execute(context);
-            String traceId = traceIdOf(context);
-            ServerResponse.BodyBuilder response = ServerResponse
-                    .status(Objects.requireNonNull(useCase.getEndpoint()).status())
-                    .contentType(MediaType.APPLICATION_JSON);
-            if (traceId != null) {
-                response.header(TRACE_ID_HEADER, traceId);
+            try {
+                Object payload = useCase.execute(context);
+                String traceId = traceIdOf(context);
+                ServerResponse.BodyBuilder response = ServerResponse
+                        .status(Objects.requireNonNull(useCase.getEndpoint()).status())
+                        .contentType(MediaType.APPLICATION_JSON);
+                if (traceId != null) {
+                    response.header(TRACE_ID_HEADER, traceId);
+                }
+                return response.body(ApiResponse.success(payload, traceId));
+            } catch (RuntimeException e) {
+                // 错误映射必须在 finally 清理 MDC **之前**执行：失败日志（logFailure）携带
+                // traceId/biz.* 现场，客户端凭响应里的 traceId 才能查到对应错误日志行。
+                // 替代原 builder.onError 注册（其执行点位于清理之后，错误日志恒丢 traceId）；
+                // Error 不在此捕获——OOM 等不可恢复错误交容器，不做 500 JSON 映射（exception-handling §5.2）
+                return errorMapper.toErrorResponse(e, request);
             }
-            return response.body(ApiResponse.success(payload, traceId));
         } finally {
             clearBizMdc();
         }

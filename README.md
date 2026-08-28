@@ -90,7 +90,7 @@ usecase:
 | `dataSaver` | DataSaver | payload → 出端口 | `expression`（返回 null 保留 payload）, `as` |
 | `validator` | Step | 入口校验（schema / 函数式，二选一） | `expression` 或 `schema`, `target`, `message`, `errorCode` |
 | `usecase` | Step | 嵌入 shared 用例作为子用例 | `ref`=目标用例 id, `input`, `as`, `isolate` |
-| `eventPublisher` | Step | 发布领域事件（活动事务内 afterCommit、提交后才外发，回滚不发布；无事务立即发布） | `event`（SpEL 构造事件，必填）, `publisher`（Bean 名，缺省取唯一实现，装配期校验存在性/唯一性/@Primary） |
+| `eventPublisher` | Step | 发布领域事件（活动事务内 afterCommit、提交后才外发，回滚不发布；无事务立即发布；外发失败不推翻已提交事务——框架 ERROR 留痕，补偿归实现方） | `event`（SpEL 构造事件，必填）, `publisher`（Bean 名，缺省取唯一实现，装配期校验存在性/唯一性/@Primary） |
 | 自定义 | 命中主数据流语义时实现对应角色接口，否则实现 Step | 任意逻辑 | `ref: beanName` |
 
 ## starter 与关键数据区（biz）
@@ -279,7 +279,9 @@ usecase:
 
 > **覆盖顺序保证**：自定义 AuthHandler / Codec 与内置实现同名时**自定义覆盖内置**——内置实现在注册表 Map 装配时先落位，用户自定义 Bean 后覆盖，不依赖 Bean 注入顺序。
 
-> RouterFunction `onError` 之外的异常（Filter / 容器层 / 无匹配路由 404）会落到 Boot 默认 `/error` 端点；demo 已配置 `server.error.include-message/stacktrace/binding-errors: never` 关闭信息泄露。
+> **step config 未知键 fail-fast**：类型化 config 的未知键（如 `isloate` 拼错）装配期即报错，不静默按缺省值运行；validator 的 `schema`、auth 的 `options` 等开放 Map 值内容（键任意）不受影响。
+
+> 失败日志在 MDC 清理**之前**输出——错误响应里的 `traceId` 与错误日志行可直接关联；路由管道之外的异常（Filter / 容器层 / 无匹配路由 404）落到 Boot 默认 `/error` 端点，demo 已配置 `server.error.include-message/stacktrace/binding-errors: never` 关闭信息泄露。
 
 ## 排错与观测
 

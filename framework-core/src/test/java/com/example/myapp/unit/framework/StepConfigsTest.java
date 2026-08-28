@@ -1,5 +1,6 @@
 package com.example.myapp.unit.framework;
 
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import com.example.myapp.framework.steps.config.CodecStepConfig;
 import com.example.myapp.framework.steps.config.SubUseCaseConfig;
 import com.example.myapp.framework.steps.config.ValidatorConfig;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -55,5 +57,27 @@ class StepConfigsTest {
                 ValidatorConfig.class))
                 .isInstanceOf(UseCaseAssemblyException.class)
                 .hasMessageContaining("errorCode");
+    }
+
+    @Test
+    void unknownConfigKey_failsAtAssembly() {
+        // 可选键拼错（isloate）不得被静默忽略后按缺省值运行——配置即契约，装配期显式报错并指认未知键
+        assertThatThrownBy(() -> StepConfigs.bind(
+                new StepDefinition("sub", "usecase", "childUseCase", Map.of("isloate", true)),
+                SubUseCaseConfig.class))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("isloate");
+    }
+
+    @Test
+    void openMapConfigValues_areNotTreatedAsUnknownProperties() {
+        // FAIL_ON_UNKNOWN_PROPERTIES 只作用于封闭 schema 的属性映射：validator 的 schema、
+        // auth 的 options 等开放 Map 字段的**内容**键任意，不得被未知键拦截误伤
+        var config = StepConfigs.bind(
+                new StepDefinition("validator", "validator", null,
+                        Map.of("schema", Map.of("type", "object", "required", List.of("userId")))),
+                ValidatorConfig.class);
+
+        assertThat(config.getSchema()).containsEntry("type", "object");
     }
 }

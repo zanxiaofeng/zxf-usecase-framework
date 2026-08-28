@@ -25,6 +25,7 @@ import com.example.myapp.framework.steps.EventPublisherStep;
 import com.example.myapp.framework.steps.EventPublisherStepFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -171,5 +172,40 @@ class EventPublisherStepTest {
         } finally {
             stepLogger.detachAppender(appender);
         }
+    }
+
+    @Test
+    void afterCommitPublishFailure_doesNotPropagateAndLogsError() {
+        // afterCommit 阶段事务已提交：publisher 异常若沿 commit() 上抛会把「已提交的成功」
+        // 反转成客户端 500（重试即重复业务）。框架兜底——ERROR 日志 + 不向上传播，
+        // 可靠性（重试/对账补偿）由 publisher 实现方保障（exception-handling §7.3）
+        EventPublisher failingPublisher = event -> {
+            throw new IllegalStateException("broker unreachable");
+        };
+        Step step = new EventPublisherStep("publish", "#payload.id", () -> failingPublisher, evaluator);
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+
+        step.execute(contextWithPayload(Map.of("id", "e-7")));   // 仅注册意图
+
+        Logger stepLogger = (Logger) LoggerFactory.getLogger(EventPublisherStep.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        stepLogger.addAppender(appender);
+        try {
+            // 模拟提交：afterCommit 内 publish 失败不得推翻已提交事务
+            assertThatCode(() -> TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(TransactionSynchronization::afterCommit))
+                    .doesNotThrowAnyException();
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> {
+                        assertThat(event.getLevel().toString()).isEqualTo("ERROR");
+                        assertThat(event.getFormattedMessage()).contains("publish");
+                    });
+        } finally {
+            stepLogger.detachAppender(appender);
+        }
+        assertThat(published).isEmpty();   // 失败的外发不落入成功发布记录
     }
 }

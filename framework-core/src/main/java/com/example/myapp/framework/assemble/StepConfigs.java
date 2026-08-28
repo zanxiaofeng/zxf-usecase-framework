@@ -8,6 +8,7 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import lombok.experimental.UtilityClass;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -25,9 +26,15 @@ import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 @UtilityClass
 public class StepConfigs {
 
-    /** 大小写不敏感枚举绑定：对齐 Spring Boot 宽松绑定体验（level: debug ≡ DEBUG） */
+    /**
+     * 大小写不敏感枚举绑定（对齐 Spring Boot 宽松绑定体验，level: debug ≡ DEBUG）+ 未知键 fail-fast：
+     * step config 是封闭 schema，而 Jackson 3 已把 FAIL_ON_UNKNOWN_PROPERTIES 默认改为关闭——
+     * 不显式开启则可选键拼错（如 isloate）被静默忽略、按缺省值运行，行为偏离且无任何报警。
+     * validator 的 schema、auth 的 options 等开放 Map 值内容无「未知属性」概念，不受影响。
+     */
     private final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
     private final Validator VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
 

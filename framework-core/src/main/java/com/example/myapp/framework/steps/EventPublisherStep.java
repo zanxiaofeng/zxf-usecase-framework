@@ -28,7 +28,9 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
  * }</pre>
  *
  * <p>事务时机（architecture §7.3 铁律「禁止事务内外发外部消息」）由本步骤统一保障：
- * 活动事务内注册 {@code afterCommit}，提交成功后才真正外发（回滚不发布）；无事务时立即发布。</p>
+ * 活动事务内注册 {@code afterCommit}，提交成功后才真正外发（回滚不发布）；无事务时立即发布。
+ * afterCommit 阶段的发布失败由本步骤兜底捕获（ERROR 日志）——事务已提交，异常上抛只会把
+ * 已提交的成功反转成客户端 500；可靠外发（重试/发件箱/对账）属 publisher 实现方职责。</p>
  *
  * <p>纯副作用步骤：不改变 payload / vars / biz。</p>
  */
@@ -77,7 +79,15 @@ public final class EventPublisherStep implements Step {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                publisherSupplier.get().publish(eventToPublish);
+                try {
+                    publisherSupplier.get().publish(eventToPublish);
+                } catch (RuntimeException e) {
+                    // afterCommit 阶段事务已提交：异常若沿 commit() 上抛，会把「已提交的成功」
+                    // 反转成客户端 500（客户端按语义重试即重复业务）。框架兜底只记录——
+                    // 可靠性（重试/发件箱/对账补偿）由 publisher 实现方保障（exception-handling §7.3）
+                    log.error("event step [{}]: 事务已提交但事件 [{}] 外发失败，需按 publisher 语义补偿（重试/对账）",
+                            name, eventToPublish.getClass().getSimpleName(), e);
+                }
             }
         });
     }

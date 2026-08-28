@@ -1,6 +1,10 @@
 package com.example.myapp.e2e;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -8,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.example.myapp.domain.event.SnapshotCreatedEvent;
+import com.example.myapp.framework.web.ErrorResponseMapper;
 import com.example.myapp.infrastructure.adapter.out.messaging.InMemoryEventPublisherAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -75,6 +80,26 @@ class UseCaseRouterE2eTest {
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"))
                 .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(header().exists("X-Trace-Id"));
+    }
+
+    @Test
+    void errorResponseLogsCarryTraceIdInMdc() throws Exception {
+        // 失败日志必须携带 traceId（客户端凭响应信封的 traceId 能查到错误日志行）：
+        // logback LoggingEvent 在事件创建时快照 MDC——据此断言错误映射打日志时 MDC 尚未被清理
+        Logger mapperLogger = (Logger) LoggerFactory.getLogger(ErrorResponseMapper.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        mapperLogger.addAppender(appender);
+        try {
+            mockMvc.perform(get("/api/v1/users/unknown").header("X-Request-Id", "trace-fix-mdc"))
+                    .andExpect(status().isNotFound());
+        } finally {
+            mapperLogger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).isNotEmpty();
+        assertThat(appender.list).allSatisfy(event ->
+                assertThat(event.getMDCPropertyMap().get("traceId")).isEqualTo("trace-fix-mdc"));
     }
 
     @Test
