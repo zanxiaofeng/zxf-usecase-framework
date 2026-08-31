@@ -5,11 +5,14 @@ import java.util.Map;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.web.servlet.function.ServerRequest;
 import tools.jackson.databind.ObjectMapper;
+
+import com.example.myapp.framework.core.dataflow.DataflowKey;
+import com.example.myapp.framework.core.dataflow.DataflowRecorder;
+import com.example.myapp.framework.core.dataflow.RecordingMap;
 
 /**
  * 管道执行上下文，在 step 之间流转（线程封闭于管道执行线程，非线程安全）。
@@ -35,13 +38,11 @@ public final class StepContext {
     private final @Nullable ServerRequest request;
     /** 请求体视图（惰性解析 + 缓存）；隔离子上下文与父共享同一实例 */
     private final RequestBodyView bodyView;
-    @Getter
-    @Setter
     private @Nullable Object payload;
-    @Getter
     private final Map<String, @Nullable Object> vars = new LinkedHashMap<>();
-    @Getter
     private final Map<String, @Nullable Object> biz = new LinkedHashMap<>();
+    /** 数据链录制器（{@code usecase.dataflow.record} 或测试场景挂载）；null 时不录制、行为与旧版一致 */
+    private @Nullable DataflowRecorder recorder;
 
     /** Web 入口上下文：关联当前入站请求（由 framework.web.UseCaseRouterFactory 创建）。 */
     public static StepContext of(ServerRequest request, ObjectMapper objectMapper) {
@@ -57,10 +58,33 @@ public final class StepContext {
 
     /**
      * 隔离子上下文（UseCaseInvoker.invokeIsolated 使用）：共享入站请求与请求体视图
-     * （Servlet 请求体流只能消费一次，body 缓存随之共享），vars / payload 全新，biz 由调用方拷贝继承。
+     * （Servlet 请求体流只能消费一次，body 缓存随之共享），vars / payload 全新，biz 由调用方拷贝继承；
+     * 录制器随上下文传递（子链事件并入同一 trace）。
      */
     public StepContext newChildContext() {
-        return new StepContext(request, bodyView);
+        StepContext child = new StepContext(request, bodyView);
+        child.recorder = recorder;
+        return child;
+    }
+
+    // ------------------------------------------------------------------
+    // 数据链录制（core.dataflow）：挂载后所有通道访问被记录为键级事件（只记键名不记值）
+    // ------------------------------------------------------------------
+
+    /** 挂载数据链录制器（重复挂载以最后一次为准） */
+    public void attach(DataflowRecorder recorder) {
+        Assert.notNull(recorder, "recorder must not be null");
+        this.recorder = recorder;
+    }
+
+    /** 当前录制器；未挂载时为 null */
+    public @Nullable DataflowRecorder recorder() {
+        return recorder;
+    }
+
+    /** 摘除录制器（录制通道访问恢复为普通读写） */
+    public void detach() {
+        this.recorder = null;
     }
 
     /** 从父上下文拷贝继承 biz 关键数据区（隔离子用例调用用；拷贝后子的修改不回传父） */
@@ -95,7 +119,33 @@ public final class StepContext {
 
     /** 类型化读取：类型不符时立即抛 ClassCastException（而非延迟到调用点） */
     public <T> @Nullable T getPayload(Class<T> type) {
-        return type.cast(payload);
+        return type.cast(getPayload());
+    }
+
+    /** 当前主数据（录制期记一次 payload 读取） */
+    public @Nullable Object getPayload() {
+        if (recorder != null) {
+            recorder.recordRead(DataflowKey.payload());
+        }
+        return payload;
+    }
+
+    /** 覆盖主数据（录制期记一次 payload 写入，含类型名） */
+    public void setPayload(@Nullable Object value) {
+        if (recorder != null) {
+            recorder.recordPayloadWrite(value == null ? "null" : value.getClass().getSimpleName());
+        }
+        this.payload = value;
+    }
+
+    /** vars 旁路区视图：录制期返回记录读写的传递型视图，否则返回内部 Map 本体 */
+    public Map<String, @Nullable Object> getVars() {
+        return recorder == null ? vars : new RecordingMap(vars, DataflowKey.Channel.VARS, recorder);
+    }
+
+    /** biz 关键数据区视图：录制期返回记录读写的传递型视图，否则返回内部 Map 本体 */
+    public Map<String, @Nullable Object> getBiz() {
+        return recorder == null ? biz : new RecordingMap(biz, DataflowKey.Channel.BIZ, recorder);
     }
 
     /**
@@ -116,15 +166,21 @@ public final class StepContext {
     }
 
     public void putVar(String name, @Nullable Object value) {
+        if (recorder != null) {
+            recorder.recordWrite(DataflowKey.vars(name));
+        }
         vars.put(name, value);
     }
 
     public @Nullable Object getVar(String name) {
+        if (recorder != null) {
+            recorder.recordRead(DataflowKey.vars(name));
+        }
         return vars.get(name);
     }
 
     public <T> @Nullable T getVar(String name, Class<T> type) {
-        return type.cast(vars.get(name));
+        return type.cast(getVar(name));
     }
 
     // ------------------------------------------------------------------
@@ -132,14 +188,20 @@ public final class StepContext {
     // ------------------------------------------------------------------
 
     public void putBiz(String key, @Nullable Object value) {
+        if (recorder != null) {
+            recorder.recordWrite(DataflowKey.biz(key));
+        }
         biz.put(key, value);
     }
 
     public @Nullable Object getBiz(String key) {
+        if (recorder != null) {
+            recorder.recordRead(DataflowKey.biz(key));
+        }
         return biz.get(key);
     }
 
     public <T> @Nullable T getBiz(String key, Class<T> type) {
-        return type.cast(biz.get(key));
+        return type.cast(getBiz(key));
     }
 }

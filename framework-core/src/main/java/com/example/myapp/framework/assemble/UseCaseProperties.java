@@ -23,6 +23,7 @@ import org.springframework.validation.annotation.Validated;
  * @param errorMappings 异常类 → HTTP 状态码映射；key 支持全限定类名或简单类名，值须为合法 HTTP 状态码
  * @param report        启动期数据流报告（{@code usecase.report}，默认开；仅日志，输出各用例静态可见的读写键视图）
  * @param trace         dev 模式 step trace（默认关）
+ * @param dataflow      数据链录制（默认关）
  */
 @Validated
 @ConfigurationProperties(prefix = "usecase")
@@ -30,12 +31,21 @@ public record UseCaseProperties(
         @DefaultValue List<@NotNull @Valid UseCaseDefinition> definitions,
         @DefaultValue Map<String, @Min(100) @Max(599) Integer> errorMappings,
         @DefaultValue("true") boolean report,
-        @DefaultValue Trace trace) {
+        @DefaultValue Trace trace,
+        @DefaultValue Dataflow dataflow) {
 
     /**
      * dev 模式 step trace：enabled 开启后每步输出 INFO 轨迹（payload 类型迁移、新增 vars 键、耗时）；
      * includeValues 需显式二次开启（值快照截断输出，防大对象/敏感值撑爆日志）。
      */
     public record Trace(@DefaultValue("false") boolean enabled, @DefaultValue("false") boolean includeValues) {
+    }
+
+    /**
+     * 运行期数据链录制：record 开启后每步对 payload/vars/biz 的键级读写被记录（只记键名不记值），
+     * 执行链收尾输出声明-实测对照检查（未声明写入 / 声明无人读取 WARN）。与 trace 独立开关——
+     * 语义不同：trace 是单步排错轨迹，record 是全链治理记录 + 规则告警。
+     */
+    public record Dataflow(@DefaultValue("false") boolean record) {
     }
 }

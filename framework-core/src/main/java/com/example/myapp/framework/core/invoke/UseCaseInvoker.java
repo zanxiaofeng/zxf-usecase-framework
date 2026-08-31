@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 
 import com.example.myapp.framework.core.MdcScopes;
 import com.example.myapp.framework.core.StepContext;
+import com.example.myapp.framework.core.dataflow.DataflowRecorder;
 import com.example.myapp.framework.core.StepContextHolder;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
@@ -121,6 +122,14 @@ public final class UseCaseInvoker {
         UseCase target = registry().require(useCaseId);
         return MdcScopes.withRestoration(() -> {
             StepContext context = StepContext.standalone();
+            StepContext current = StepContextHolder.current();
+            if (current != null) {
+                // 管道内调用（数据链录制场景）：录制器随新上下文传递，子链事件并入同一 trace
+                DataflowRecorder recorder = current.recorder();
+                if (recorder != null) {
+                    context.attach(recorder);
+                }
+            }
             context.putBiz(StepContext.TRACE_ID_KEY, UUID.randomUUID().toString());
             context.setPayload(input);
             return target.execute(context);

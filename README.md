@@ -291,11 +291,14 @@ usecase:
   trace:
     enabled: false        # 默认关：开启后每步 INFO 轨迹（payload 类型迁移、新增 vars 键、耗时）
     include-values: false # 默认关：显式二次开启才输出值快照（截断 256 字符，防大对象/敏感值）
+  dataflow:
+    record: false         # 默认关：运行期键级数据链录制 + 声明-实测对照检查（只记键名不记值）
 ```
 
 - **装配期 as 键碰撞 WARN**：同一 vars 键存在多个声明式写入点（含串联子用例合并，写入点带 `childId.` 前缀）时启动期打 WARN——只 WARN 不 fail（存在有意覆盖的合法用法）；静态可见范围仅声明式 `as` 键，自定义 step 的运行期写入不在其列；
 - **数据流报告**：`usecase.report` 输出各用例 `dataflow: <id>` 段——biz 写入（starter keys）、vars 写入（as 键）、表达式读取（SpEL AST 首段静态分析），供配置审查与新人上手；
 - **dev trace**：`usecase.trace.enabled` 开启后逐条 step 输出 `payload null -> UserDto, vars +[credit], 3 ms` 形态轨迹；关闭时执行路径零开销（无快照、无键集拷贝）。
+- **数据链录制与对照**：`usecase.dataflow.record=true` 开启后，每步对 payload/vars/biz 的键级读写被自动记录（`StepContext` 访问器挂钩 + `getVars()/getBiz()` 返回记录视图，SpEL `#vars.x` 经同一视图拦截；只记键名与 payload 类型名，永不记值）。root 执行收尾输出声明-实测对照：未声明写入 WARN、声明写入无人读取 WARN（payload 通道排除；`biz.*` 类批量 dump 读不豁免）、INFO 汇总。自定义 step 经 `Step#dataflow()` 声明键级契约（`payload` / `vars.x` / `biz.y`，支持 `vars.*` 通配）；未声明 step 只记录不告警。静态 API：`UseCaseRegistry#dataflowOf(id)`（声明视图）、`ScenarioResult#trace()`（实测视图）+ `UseCaseScenario#expectDataflow(...)`（中间态读写断言）。已知边界：Java 局部变量内的变换与 request 视图（`#body/#path` 等）不在录制范围；`@Async` 切线程后录制断链（与 invoker 的 ThreadLocal 立场一致）。
 
 ## YAML 用例测试（framework-test）
 

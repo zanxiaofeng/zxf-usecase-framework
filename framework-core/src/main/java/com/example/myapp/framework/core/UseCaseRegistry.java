@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import com.example.myapp.framework.core.dataflow.DataflowReport;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 
 /**
@@ -27,6 +28,11 @@ public final class UseCaseRegistry {
 
     public Optional<UseCase> find(String id) {
         return Optional.ofNullable(useCases.get(id));
+    }
+
+    /** 某用例的数据流声明视图（应然）；未注册的 id 返回 empty */
+    public Optional<DataflowReport> dataflowOf(String id) {
+        return find(id).map(useCase -> useCase.getDataflow().book().reportOf(id));
     }
 
     public UseCase require(String id) {

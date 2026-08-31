@@ -101,7 +101,7 @@ class UseCaseDefinitionValidationTest {
     @Test
     void nullDefinitionElement_isRejected() {
         UseCaseProperties properties = new UseCaseProperties(Arrays.asList((UseCaseDefinition) null),
-                Map.of(), true, new UseCaseProperties.Trace(false, false));
+                Map.of(), true, new UseCaseProperties.Trace(false, false), new UseCaseProperties.Dataflow(false));
 
         assertThat(validator.validate(properties))
                 .anySatisfy(violation -> assertThat(violation.getPropertyPath().toString())
@@ -119,7 +119,7 @@ class UseCaseDefinitionValidationTest {
     @Test
     void errorMappingStatusOutOfRange_isRejected() {
         UseCaseProperties properties = new UseCaseProperties(List.of(), Map.of("com.example.SomeException", 99),
-                true, new UseCaseProperties.Trace(false, false));
+                true, new UseCaseProperties.Trace(false, false), new UseCaseProperties.Dataflow(false));
 
         assertThat(validator.validate(properties))
                 .anySatisfy(violation -> assertThat(violation.getPropertyPath().toString()).startsWith("errorMappings"));
@@ -130,6 +130,6 @@ class UseCaseDefinitionValidationTest {
     }
 
     private static UseCaseProperties propertiesOf(UseCaseDefinition definition) {
-        return new UseCaseProperties(List.of(definition), Map.of(), true, new UseCaseProperties.Trace(false, false));
+        return new UseCaseProperties(List.of(definition), Map.of(), true, new UseCaseProperties.Trace(false, false), new UseCaseProperties.Dataflow(false));
     }
 }

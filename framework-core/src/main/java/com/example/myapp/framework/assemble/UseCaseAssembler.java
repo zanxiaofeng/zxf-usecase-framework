@@ -26,6 +26,8 @@ import com.example.myapp.framework.core.UseCase.EndpointSpec;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
 import com.example.myapp.framework.core.UseCaseTrace;
+import com.example.myapp.framework.core.dataflow.DataflowBook;
+import com.example.myapp.framework.core.dataflow.DataflowOptions;
 import com.example.myapp.framework.core.exception.UseCaseAssemblyException;
 import com.example.myapp.framework.steps.StarterStepFactory;
 import com.example.myapp.framework.steps.SubUseCaseStepFactory;
@@ -63,17 +65,25 @@ public final class UseCaseAssembler {
     private final Map<String, StepFactory> factories;
     private final UseCaseTrace trace;
     private final boolean reportEnabled;
+    private final boolean recordEnabled;
 
-    /** 便捷构造：无 dev trace、无数据流报告（测试与手工装配用） */
+    /** 便捷构造：无 dev trace、无数据流报告与录制（测试与手工装配用） */
     public UseCaseAssembler(BeanFactory beanFactory, List<StepFactory> factoryList) {
-        this(beanFactory, factoryList, UseCaseTrace.DISABLED, false);
+        this(beanFactory, factoryList, UseCaseTrace.DISABLED, false, false);
+    }
+
+    /** 便捷构造：无录制（测试与手工装配用） */
+    public UseCaseAssembler(BeanFactory beanFactory, List<StepFactory> factoryList,
+                            UseCaseTrace trace, boolean reportEnabled) {
+        this(beanFactory, factoryList, trace, reportEnabled, false);
     }
 
     public UseCaseAssembler(BeanFactory beanFactory, List<StepFactory> factoryList,
-                            UseCaseTrace trace, boolean reportEnabled) {
+                            UseCaseTrace trace, boolean reportEnabled, boolean recordEnabled) {
         this.beanFactory = beanFactory;
         this.trace = trace;
         this.reportEnabled = reportEnabled;
+        this.recordEnabled = recordEnabled;
         Map<String, StepFactory> map = new LinkedHashMap<>();
         for (StepFactory factory : factoryList) {
             if (map.put(factory.type(), factory) != null) {
@@ -98,7 +108,8 @@ public final class UseCaseAssembler {
         // 第二遍半：vars 键静态分析（引用图已无环）——as 键碰撞 WARN
         VarsWriteIndex writeIndex = new VarsWriteIndex(definitions);
         warnVarsKeyCollisions(definitions, writeIndex);
-        // 第三遍：构建
+        // 第三遍：构建（声明簿随 step 实例化同步填充——step 名以运行期 Step#name() 为准）
+        DataflowBook book = new DataflowBook();
         List<UseCase> assembled = new ArrayList<>();
         for (UseCaseDefinition definition : definitions) {
             // id/steps/endpoint 非空已由第一遍 validateUseCase 保证（含编程式装配入口——该路径不经 Bean Validation）
@@ -106,16 +117,21 @@ public final class UseCaseAssembler {
             List<StepDefinition> stepDefinitions = definition.getSteps();
             List<Step> steps = new ArrayList<>();
             for (int i = 0; i < stepDefinitions.size(); i++) {
-                steps.add(resolveStep(id, i, stepDefinitions.get(i)));
+                Step step = resolveStep(id, i, stepDefinitions.get(i));
+                book.put(id, step.name(), DataflowDeclarationResolver.derive(stepDefinitions.get(i), step));
+                steps.add(step);
             }
             EndpointSpec endpointSpec = definition.isShared() ? null : requireEndpointSpec(definition);
             assembled.add(new UseCase(id, definition.getDescription(), endpointSpec, List.copyOf(steps),
-                    definition.isShared(), trace));
+                    definition.isShared(), trace, new DataflowOptions(recordEnabled, book)));
         }
         UseCaseRegistry registry = new UseCaseRegistry(assembled);
         log.info("assembled {} usecase(s) from configuration 'usecase.definitions'", registry.size());
         if (reportEnabled) {
-            DataflowReporter.render(definitions, writeIndex).forEach(line -> log.info("{}", line));
+            for (UseCase useCase : registry.all()) {
+                log.info("{}", DataflowReporter.render(useCase.getDataflow().book().reportOf(useCase.getId()),
+                        writeIndex));
+            }
         }
         return registry;
     }

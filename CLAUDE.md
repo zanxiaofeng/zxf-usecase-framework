@@ -16,4 +16,5 @@
 | 持久层 | **未引入**：`db-conventions.md` / `db-migration.md` 暂不适用；e2e 数据以内存适配器 / stub 端点提供（`@Sql`、DatabaseVerifier 相关步骤跳过） | `db-conventions.md` 适用边界、`tdd-workflow.md` 工程结构边界 |
 | 契约测试 | **未引入**：`contract-test.md` 落地时执行 | `contract-test.md` 适用边界 |
 | 模块结构 | 当前单模块；出现编译瓶颈或需编译期隔离时按 `architecture.md` §11 演进多模块 | `architecture.md` §11 |
+| 数据链显性化 | **已落地（2026-08-31）**：`core/dataflow` 包——声明（`Step#dataflow()` + 装配期 config 推导）、运行期录制（`usecase.dataflow.record`，默认关；只记键名不记值）、对照检查（未声明写入 / 声明无人读取 WARN）；消费出口 `UseCaseRegistry#dataflowOf` / `ScenarioResult#trace()` / `UseCaseScenario#expectDataflow`；粒度=键级血缘（`payload`/`vars.x`/`biz.y`），字段级血缘与值采集明确不做 | 本项目设计文档 §3.2/§4.3 + README「排错与观测」 |
 | 技术栈现役范围 | Web/Jackson/Validation/RestClient 为现役基线；MySQL/JPA/Flyway/Kafka/Spring Cloud Contract 为引入后基线 | `tech-stack.md` 适用边界 |

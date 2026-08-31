@@ -1,5 +1,7 @@
 package com.example.myapp.framework.core;
 
+import com.example.myapp.framework.core.dataflow.Dataflow;
+
 /**
  * 用例管道中的最小执行单元。
  *
@@ -38,5 +40,16 @@ public interface Step {
     /** 步骤名称，用于日志与异常定位。默认为实现类名。 */
     default String name() {
         return getClass().getSimpleName();
+    }
+
+    /**
+     * 本步的键级数据流声明（读写哪些 {@code payload} / {@code vars.x} / {@code biz.y} 键），
+     * 供装配期静态报告与运行期声明-实测对照检查使用。
+     *
+     * <p>默认 {@link Dataflow#UNKNOWN}（未声明）：运行期录制照常记录真实读写，但不参与对照检查。
+     * 内置 step 的声明由装配器从配置推导，无需覆写。</p>
+     */
+    default Dataflow dataflow() {
+        return Dataflow.UNKNOWN;
     }
 }

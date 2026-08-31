@@ -251,7 +251,8 @@ public class UseCaseFrameworkAutoConfiguration {
                                     List<StepFactory> stepFactories) {
         UseCaseProperties.Trace trace = properties.trace();
         return new UseCaseAssembler(beanFactory, stepFactories,
-                new UseCaseTrace(trace.enabled(), trace.includeValues()), properties.report())
+                new UseCaseTrace(trace.enabled(), trace.includeValues()), properties.report(),
+                properties.dataflow().record())
                 .assemble(properties.definitions());
     }
 

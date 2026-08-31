@@ -22,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.example.myapp.framework.core.StepContext;
 import com.example.myapp.framework.core.UseCase;
 import com.example.myapp.framework.core.UseCaseRegistry;
+import com.example.myapp.framework.core.dataflow.DataflowRecorder;
 import com.example.myapp.framework.steps.StarterStep;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,6 +80,7 @@ public final class UseCaseScenario {
     private @Nullable RecordingEventPublisher eventRecorder;
     private final List<Consumer<ScenarioResult>> expectations = new ArrayList<>();
     private final List<Consumer<RecordingEventPublisher>> eventExpectations = new ArrayList<>();
+    private final List<DataflowExpectation> dataflowExpectations = new ArrayList<>();
 
     private UseCaseScenario(UseCaseRegistry registry, ObjectMapper objectMapper) {
         this.registry = registry;
@@ -225,9 +227,20 @@ public final class UseCaseScenario {
     }
 
     /**
+     * 注册数据链断言（中间态读写）：执行后对实测 {@code DataflowTrace} 自动校验，
+     * 失败消息附完整数据链渲染。step 名与 {@code Step#name()} 对齐（含嵌套子用例内的 step）。
+     */
+    public UseCaseScenario expectDataflow(Consumer<DataflowExpectation> assertion) {
+        DataflowExpectation expectation = DataflowExpectation.dataflow();
+        assertion.accept(expectation);
+        dataflowExpectations.add(expectation);
+        return this;
+    }
+
+    /**
      * 执行场景：构造请求上下文 → 种子化 traceId → 走真实管道 → 执行已注册断言。
      *
-     * @return 执行结果视图（payload + 上下文），供进一步自定义断言
+     * @return 执行结果视图（payload + 上下文 + 数据链 trace），供进一步自定义断言
      * @throws IllegalStateException 未定位用例（未调 request/useCase）或事件断言未接探针
      * @throws IllegalArgumentException request 定位的端点无匹配用例（消息附可用路由表）
      */
@@ -238,15 +251,19 @@ public final class UseCaseScenario {
         }
         UseCase useCase = resolveUseCase();
         StepContext context = StepContext.of(buildServerRequest(), objectMapper);
+        // 数据链录制接入（external：不跑对照检查，仅记录供断言；usecase 自带录制时复用优先）
+        DataflowRecorder dataflowRecorder = DataflowRecorder.external();
+        context.attach(dataflowRecorder);
         context.putBiz(StepContext.TRACE_ID_KEY, traceId);
         MDC.put(StepContext.TRACE_ID_KEY, traceId);
         try {
             Object payload = useCase.execute(context);
-            ScenarioResult result = new ScenarioResult(payload, context);
+            ScenarioResult result = new ScenarioResult(payload, context, dataflowRecorder.snapshot());
             expectations.forEach(expectation -> expectation.accept(result));
+            dataflowExpectations.forEach(expectation -> expectation.verify(result.trace()));
             if (eventRecorder != null) {
-                RecordingEventPublisher recorder = eventRecorder;
-                eventExpectations.forEach(expectation -> expectation.accept(recorder));
+                RecordingEventPublisher publisher = eventRecorder;
+                eventExpectations.forEach(expectation -> expectation.accept(publisher));
             }
             return result;
         } finally {

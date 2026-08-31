@@ -11,6 +11,10 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.Assert;
 
+import com.example.myapp.framework.core.dataflow.AccessEvent;
+import com.example.myapp.framework.core.dataflow.DataflowKey;
+import com.example.myapp.framework.core.dataflow.DataflowOptions;
+import com.example.myapp.framework.core.dataflow.DataflowRecorder;
 import com.example.myapp.framework.core.exception.StepExecutionException;
 
 /**
@@ -36,10 +40,18 @@ public final class UseCase {
     private final boolean shared;
     /** dev trace 开关（装配期注入；手工装配/测试默认关闭） */
     private final UseCaseTrace trace;
+    /** 数据链录制配置（{@code usecase.dataflow.record}；测试与手工装配默认关闭） */
+    private final DataflowOptions dataflow;
 
-    /** 便捷构造：无 dev trace（测试与手工装配用） */
+    /** 便捷构造：无 dev trace、无录制（测试与手工装配用） */
     public UseCase(String id, String description, EndpointSpec endpoint, List<Step> steps, boolean shared) {
-        this(id, description, endpoint, steps, shared, UseCaseTrace.DISABLED);
+        this(id, description, endpoint, steps, shared, UseCaseTrace.DISABLED, DataflowOptions.disabled());
+    }
+
+    /** 便捷构造：无录制（测试与手工装配用） */
+    public UseCase(String id, String description, EndpointSpec endpoint, List<Step> steps, boolean shared,
+            UseCaseTrace trace) {
+        this(id, description, endpoint, steps, shared, trace, DataflowOptions.disabled());
     }
 
     /**
@@ -53,20 +65,36 @@ public final class UseCase {
      */
     public @Nullable Object execute(StepContext context) {
         Assert.notNull(context, "context must not be null");
+        // 录制器复用优先（external 挂载或嵌套子用例续链）；root 录制由本用例自建并随执行收尾
+        DataflowRecorder owned = null;
+        DataflowRecorder recorder = context.recorder();
+        if (recorder == null && dataflow.recordEnabled()) {
+            owned = DataflowRecorder.root(id, dataflow.book());
+            context.attach(owned);
+            recorder = owned;
+        }
         StepContext previous = StepContextHolder.set(context);
         try {
             for (Step step : steps) {
                 long start = System.nanoTime();
                 TraceSample before = trace.enabled() ? TraceSample.of(context, trace.includeValues()) : null;
+                int recordedFrom = recorder != null ? recorder.eventCount() : 0;
+                if (recorder != null) {
+                    recorder.beginStep(id, step.name());
+                }
                 try {
                     step.execute(context);
                 } catch (StepExecutionException e) {
                     throw e.withDiagnostics(DataSnapshot.of(context));
                 } catch (RuntimeException e) {
                     throw new StepExecutionException(id, step.name(), e).withDiagnostics(DataSnapshot.of(context));
+                } finally {
+                    if (recorder != null) {
+                        recorder.endStep();
+                    }
                 }
                 if (before != null) {   // before 非空 ⟺ trace.enabled()（采样仅在 trace 开启时发生）
-                    traceStep(step, before, context, System.nanoTime() - start);
+                    traceStep(step, before, context, System.nanoTime() - start, recorder, recordedFrom);
                 }
                 log.debug("usecase [{}] step [{}] finished in {} ms",
                         id, step.name(), (System.nanoTime() - start) / 1_000_000);
@@ -74,13 +102,23 @@ public final class UseCase {
             return context.getPayload();
         } finally {
             StepContextHolder.restore(previous);
+            if (owned != null) {
+                try {
+                    owned.finish();
+                } finally {
+                    context.detach();
+                }
+            }
         }
     }
 
     /** dev trace：输出本步的 payload 类型迁移与新增 vars 键（值快照仅 include-values 开启时，截断输出） */
-    private void traceStep(Step step, TraceSample before, StepContext context, long nanos) {
-        Set<String> addedVars = new LinkedHashSet<>(context.getVars().keySet());
-        addedVars.removeAll(before.varsKeys());
+    private void traceStep(Step step, TraceSample before, StepContext context, long nanos,
+            @Nullable DataflowRecorder recorder, int recordedFrom) {
+        // 新增 vars 优先取录制事件（与数据链同源）；未录制时回退物理键集 diff
+        Set<String> addedVars = recorder != null
+                ? recordedVarWrites(recorder, recordedFrom)
+                : diffVars(context, before);
         if (trace.includeValues()) {
             log.info("usecase [{}] step [{}] trace: payload {} -> {} ({} -> {}), vars +{}, {} ms",
                     id, step.name(), before.payloadType(), typeOf(context.getPayload()),
@@ -90,6 +128,23 @@ public final class UseCase {
         }
         log.info("usecase [{}] step [{}] trace: payload {} -> {}, vars +{}, {} ms",
                 id, step.name(), before.payloadType(), typeOf(context.getPayload()), addedVars, nanos / 1_000_000);
+    }
+
+    /** 录制切片中本步窗口（含嵌套子用例窗口）产生的 vars 写键 */
+    private static Set<String> recordedVarWrites(DataflowRecorder recorder, int recordedFrom) {
+        Set<String> addedVars = new LinkedHashSet<>();
+        for (AccessEvent event : recorder.eventsSince(recordedFrom)) {
+            if (event.op() == AccessEvent.Op.WRITE && event.key().channel() == DataflowKey.Channel.VARS) {
+                addedVars.add(event.key().name());
+            }
+        }
+        return addedVars;
+    }
+
+    private static Set<String> diffVars(StepContext context, TraceSample before) {
+        Set<String> addedVars = new LinkedHashSet<>(context.getVars().keySet());
+        addedVars.removeAll(before.varsKeys());
+        return addedVars;
     }
 
     private static String typeOf(@Nullable Object payload) {
