@@ -19,7 +19,7 @@ import com.example.myapp.framework.test.UseCaseScenario;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * framework-test harness（UseCaseScenario）在真实装配产物上的示范：
+ * usecase-framework-test harness（UseCaseScenario）在真实装配产物上的示范：
  * 不经 HTTP 层，直接驱动 YAML 定义的管道，断言 payload / vars / biz / 事件发布。
  * 与 UseCaseRouterE2eTest（MockMvc 全链路 + 信封/状态码断言）互补并存。
  */

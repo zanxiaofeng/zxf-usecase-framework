@@ -17,9 +17,9 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>framework-core</module>
-        <module>framework-test</module>
-        <module>demo</module>
+        <module>usecase-framework-core</module>
+        <module>usecase-framework-test</module>
+        <module>usecase-framework-demo</module>
     </modules>
 
     <properties>

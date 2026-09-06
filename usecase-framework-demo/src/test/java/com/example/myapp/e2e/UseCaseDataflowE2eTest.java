@@ -22,7 +22,7 @@ import static org.assertj.core.groups.Tuple.tuple;
  * 跨步读写（biz → 自定义 step）、Java client 子用例链归属（shared）、isolate 子用例边界。
  *
  * <p>fetchCredit（httpRequester）环节需要真实 HTTP 下游，不在本测试覆盖范围
- * （其声明推导由 framework-core 单测覆盖，运行期落地与其余 step 同一 storeResult 机制）。</p>
+ * （其声明推导由 usecase-framework-core 单测覆盖，运行期落地与其余 step 同一 storeResult 机制）。</p>
  */
 @SpringBootTest
 class UseCaseDataflowE2eTest {

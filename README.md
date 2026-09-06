@@ -6,24 +6,24 @@
 
 ```
 usecase-framework（聚合 POM）
-├── framework-core     # 框架本体（独立库 jar）：core/assemble/steps/auth/codec/expression/web
-│                      # + AutoConfiguration.imports —— 经 spring-boot 自动配置装配，可单独发布
-├── framework-test     # YAML 用例测试 harness（独立库 jar，业务方 test scope 引用）：
-│                      # UseCaseScenario 场景断言 + RecordingEventPublisher 事件探针
-└── demo               # 演示应用（可执行 jar）：MyAppApplication + application/domain/infrastructure
-                       # + application.yml 用例定义 + e2e 测试
+├── usecase-framework-core     # 框架本体（独立库 jar）：core/assemble/steps/auth/codec/expression/web
+│                              # + AutoConfiguration.imports —— 经 spring-boot 自动配置装配，可单独发布
+├── usecase-framework-test     # YAML 用例测试 harness（独立库 jar，业务方 test scope 引用）：
+│                              # UseCaseScenario 场景断言 + RecordingEventPublisher 事件探针
+└── usecase-framework-demo     # 演示应用（可执行 jar）：MyAppApplication + application/domain/infrastructure
+                               # + application.yml 用例定义 + e2e 测试
 ```
 
 ## 快速开始
 
 ```bash
 # 技术基线：Java 21 · Spring Boot 4.1.x · Maven 3.9+
-# 根目录执行（-am 会先构建 framework-core）
-mvn -pl demo -am spring-boot:run
+# 根目录执行（-am 会先构建 usecase-framework-core）
+mvn -pl usecase-framework-demo -am spring-boot:run
 
 # 或打包后运行
-mvn -pl demo -am package -DskipTests
-java -jar demo/target/usecase-framework-demo-1.0.0-SNAPSHOT.jar
+mvn -pl usecase-framework-demo -am package -DskipTests
+java -jar usecase-framework-demo/target/usecase-framework-demo-1.0.0-SNAPSHOT.jar
 ```
 
 启动日志会打印装配出的路由表：
@@ -300,9 +300,9 @@ usecase:
 - **dev trace**：`usecase.trace.enabled` 开启后逐条 step 输出 `payload null -> UserDto, vars +[credit], 3 ms` 形态轨迹；关闭时执行路径零开销（无快照、无键集拷贝）。
 - **数据链录制与对照**：`usecase.dataflow.record=true` 开启后，每步对 payload/vars/biz 的键级读写被自动记录（`StepContext` 访问器挂钩 + `getVars()/getBiz()` 返回记录视图，SpEL `#vars.x` 经同一视图拦截；只记键名与 payload 类型名，永不记值）。root 执行收尾输出声明-实测对照：未声明写入 WARN、声明写入无人读取 WARN（payload 通道排除；`biz.*` 类批量 dump 读不豁免）、INFO 汇总。自定义 step 经 `Step#dataflow()` 声明键级契约（`payload` / `vars.x` / `biz.y`，支持 `vars.*` 通配）；未声明 step 只记录不告警。静态 API：`UseCaseRegistry#dataflowOf(id)`（声明视图）、`ScenarioResult#trace()`（实测视图）+ `UseCaseScenario#expectDataflow(...)`（中间态读写断言）。已知边界：Java 局部变量内的变换与 request 视图（`#body/#path` 等）不在录制范围；`@Async` 切线程后录制断链（与 invoker 的 ThreadLocal 立场一致）。
 
-## YAML 用例测试（framework-test）
+## YAML 用例测试（usecase-framework-test）
 
-配置驱动意味着 **YAML 用例本身就是回归对象**。`framework-test` 模块（业务方以 test scope 引入）提供 `UseCaseScenario`：构造接近真实的 `ServerRequest`（MockHttpServletRequest 打底，path/query/header/body 语义与路由入口一致），经 `StepContext.of` 走真实管道执行，然后断言最终 payload、vars、biz 与已发布事件：
+配置驱动意味着 **YAML 用例本身就是回归对象**。`usecase-framework-test` 模块（业务方以 test scope 引入）提供 `UseCaseScenario`：构造接近真实的 `ServerRequest`（MockHttpServletRequest 打底，path/query/header/body 语义与路由入口一致），经 `StepContext.of` 走真实管道执行，然后断言最终 payload、vars、biz 与已发布事件：
 
 ```java
 UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注入二者
@@ -327,7 +327,7 @@ UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注
 5. **事件发布**：实现 `EventPublisher` 注册为 Bean（Kafka / 事务性发件箱 / webhook……）；事务时机（afterCommit）由框架的 eventPublisher 步骤统一保障，实现方只管真实外发（建议幂等 + 自行重试）。别名防护：事件表达式直接引用 `#payload` 会打 WARN，Map/List 事件发布前浅拷贝脱钩顶层引用（嵌套结构仍共享——构造全新事件对象是最稳妥写法）；
 6. **覆盖 RestClient**：定义名为 `useCaseRestClient` 的 Bean（自定义超时/拦截器/代理）；
 7. **替换任意内置 Bean**：自动配置的内置 Bean 均带 `@ConditionalOnMissingBean`——定义**同名 Bean**（如 `dataLoaderStepFactory`、`useCaseRestClient`）即整体替换内置实现；`StepExpressionEvaluator` / `UseCaseRegistry` / `UseCaseInvoker` / `ClientCredentialsTokenSupplier` 按**类型**判断（任意 Bean 名均可替换）。内置 AuthHandler / Codec 非独立 Bean，覆盖走第 3、4 条的 scheme / algorithm 机制；
-8. **非 Web 应用**：路由绑定仅 Servlet Web 环境装配（`@ConditionalOnWebApplication`）；非 Web 项目引入 framework-core 时管道装配（Registry / UseCaseInvoker / StepFactory）仍然可用，经 `UseCaseInvoker.invokeStandalone` 在管道外编程调用用例（无入站请求，上下文经 `StepContext.standalone()` 创建）。`usecase.definitions` 为空时应用正常启动（空路由，不绑定任何端点）。
+8. **非 Web 应用**：路由绑定仅 Servlet Web 环境装配（`@ConditionalOnWebApplication`）；非 Web 项目引入 usecase-framework-core 时管道装配（Registry / UseCaseInvoker / StepFactory）仍然可用，经 `UseCaseInvoker.invokeStandalone` 在管道外编程调用用例（无入站请求，上下文经 `StepContext.standalone()` 创建）。`usecase.definitions` 为空时应用正常启动（空路由，不绑定任何端点）。
 
 **自定义 step 数据纪律**（payload / vars / biz 均为引用传递，遵守以下约定避免跨步骤污染）：
 
@@ -338,7 +338,7 @@ UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：framework-core + framework-test + demo 三模块全量运行（156 个）
+mvn test     # 根目录执行：usecase-framework-core + usecase-framework-test + usecase-framework-demo 三模块全量运行（156 个）
              # main 源集编译期经 Error Prone + NullAway 空值检查（WARN 级；.mvn/jvm.config 提供 javac 导出）
 ```
 
@@ -358,6 +358,6 @@ mvn test     # 根目录执行：framework-core + framework-test + demo 三模�
 - `framework/web/ErrorResponseMapperTest`：裸 IAE → 400 `VALIDATION_ERROR`（含 StepExecutionException 包装链还原）、未知异常 → 500 固定文案不回显内部消息；
 - `unit/framework/EventPublisherStepFactoryTest`：装配期发布器校验（缺失 / 类型不符 / 多候选无 @Primary fail-fast，@Primary 运行期解析命中）；
 - `framework/autoconfigure/AutoConfigurationMapTest`：自定义 AuthHandler/Codec 同名覆盖内置（不依赖注入顺序）；
-- `framework/test/UseCaseScenarioTest`（framework-test 模块）：harness 自身语义——请求构造（path/query/header/body）、端点/id 双定位、traceId 种子化与 MDC 清理、payload/vars/biz/事件断言与失败路径；
+- `framework/test/UseCaseScenarioTest`（usecase-framework-test 模块）：harness 自身语义——请求构造（path/query/header/body）、端点/id 双定位、traceId 种子化与 MDC 清理、payload/vars/biz/事件断言与失败路径；
 - `e2e/UseCaseRouterE2eTest`：全上下文 + MockMvc，验证 200 信封 / traceId 生成、透传与白名单 / decoder 端点 / 404 领域映射（含穿透子用例与 Java 调用边界）/ 502 下游失败 / POST schema 校验 400 / 坏 JSON 400 / Java 调用子用例端点；
 - `e2e/UseCaseScenarioDemoTest`：UseCaseScenario 在真实装配产物上的示范——getUser/getUserByToken/createUserSnapshot 三条管道的 payload/vars/biz/事件断言（RecordingEventPublisher @Primary 探针接管事件发布）。
