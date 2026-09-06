@@ -2623,3 +2623,30 @@ data-transfer-sdk/                               # 聚合根（父 POM）
 该框架的设计哲学是"降维打击"：**Flatten** 把任意复杂的嵌套 JSON 拍平为一维键值空间，消除结构差异；**声明式映射**让所有转换逻辑用 YAML 配置表达——零代码、可版本化、可热更新；**Unflatten** 根据目标路径自动重建嵌套结构。最终效果是：对接一个新的上下游系统，只需写一份 TransferSpec 配置文件，无需改任何代码。
 
 工程落地按三模块推进：`data-transfer-core`（引擎与校验，Jackson 3 统一版本线、Flatten/Unflatten 复用 json-flattener 0.18.2——v0.18.0 起原生支持 Jackson 3）、`data-transfer-test`（TransferAssert 契约测试工具）、`data-transfer-demo`（端到端示例与契约测试示范）。配合 JSON Schema 校验（配置格式）与 TransferAssert（运行时行为），从配置格式到映射行为形成完整的校验链路，任何一层出问题都能在测试阶段被拦截。
+
+---
+
+## 附录 C：落地注记（v1.0 实现，2026-09-07）
+
+三模块已在本工程落地（groupId 统一 `com.example`，与 usecase-framework 六模块聚合；设计文档中的 `com.example.datatransfer` groupId 为独立发布形态，仓库内不适用），并以**内置 `dataTransfer` step 类型**集成进 usecase-framework-core（config：`spec`（classpath 引用）/`source`（SpEL，缺省 `#payload`）/`as`（旁路键，缺省覆盖 payload）；装配期 Schema 校验 fail-fast；默认 source 时覆写 `dataflow()` 声明键级血缘）。`mvn clean test` 全量绿：core 38 + test 14 + demo 6 + usecase 集成 10 + demo e2e。
+
+### C.1 实现中实证并修正的文档表述
+
+| 原表述 | 实测结论（已按此实现） |
+|---|---|
+| §5.3-1「空对象/空数组拍平后不产生任何键，Unflatten 无法还原」 | **不成立**：json-flattener v0.10+ 将空容器**作为叶子值保留**（`{"a": {}}` → 键 `a`、值为空 Map），往返可还原（`FlatMapProcessorTest.emptyContainers_areKeptAsLeafValues` 实证） |
+| §8.4/§10.3「FlatKey 中除 `.` 与 `[*]` 外不含正则元字符，只需转义 `.`」 | **论断错误**：字面索引 `[0]` 的方括号是正则元字符（不转义即成字符类），`expandWildcard` 与断言路径统一经 `FlatMapProcessor.wildcardPattern`（占位保护 `[*]` → 转义 `[]` → 还原 `[\d+]`）处理 |
+| §6.3 `otherwise: "default('unknown')"` 的直觉语义 | `default()` **仅对 null 兜底**，非 null 值原样传递；「无分支命中的兜底输出」需写针对当前值的变换（如 `replace`）或依赖 nullPolicy=KEEP 下的 null 值 |
+| §9.3 networknt API「待 javadoc 核实」 | 全部实证可用：`SchemaRegistry.withDefaultDialect(SpecificationVersion)` 单参、`getSchema(String, InputFormat)`、`validate(String, InputFormat)` 双参（本项目 `ValidatorStepFactory` 亦为同形态） |
+| §8.4 json-flattener 实例级 API「设计示意」 | 全部实证可用：`Jackson3JsonValue`（`com.github.wnameless.json.base`）包装 `JsonNode`、`new JsonFlattener(...).withSeparator(char).flattenAsMap()`、`new JsonUnflattener(Map).withSeparator(char).unflattenAsMap()` |
+
+### C.2 与设计文档的实现偏差（环境事实）
+
+- **Jackson 3 YAML mapper**：`JsonMapper.builder(new YAMLFactory())` 不可用（类型不兼容），须 `YAMLMapper.builder()...build()`（§9.3 代码已按此实现）。
+- **JUnit**：Spring Boot 4.1 解析到 JUnit 6.0.x，`TestExecutionInterceptor` 已移除，`TransferSpecExtension` 改用统一拦截接口 `InvocationInterceptor`（§10.8 所述形态的 JUnit 6 等价物）。
+- **computed 求值**：实现了受限聚合形态 `agg(PATH)` / `agg(PATH * PATH)`（agg ∈ sum/avg/count/min/max，双路径按索引对位逐元素相乘，BigDecimal 精度）；其余表达式以目标 FlatMap 的嵌套视图绑定顶层键后交 JEXL。
+- **TransferAssert 的 spec 加载**：统一经 `TransferSpecValidator.validateAndLoad`（加载即 Schema 校验，对齐 §10.11 校验链路）；`pathExists` 支持「键或键祖先」匹配（`a.lines[*]` 可命中 `a.lines[0].unitPrice` 的容器存在性）。
+
+### C.3 第一版裁剪清单（装配期/构造期 fail-fast 拒绝，不静默忽略）
+
+`sources`（多源合并）与 `rewrites`（路径改写）保留模型字段但引擎构造期抛「not yet supported」；未实现：批量模式 `transfer_batch`、dry-run、`fn:` 前缀函数语法（自定义函数经构造器 `extraFunctions` 注册后直接以函数名引用）、指标埋点（ObservabilityConfig 仅模型承载）、§3.2 函数表中的其余内置函数（已实现 trim/lower/upper/replace/multiply/round/default，其余经 FuncRegistry.register 扩展）。

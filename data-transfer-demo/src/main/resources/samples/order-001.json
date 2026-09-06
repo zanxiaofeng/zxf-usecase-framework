@@ -1,0 +1,16 @@
+{
+  "orderId": "ORD-20260906-001",
+  "customer": {
+    "name": " Zhang San ",
+    "email": "ZHANG@EXAMPLE.COM",
+    "addresses": [
+      {"city": "Shanghai", "zip": "200000"},
+      {"city": "Beijing", "zip": "100000"}
+    ]
+  },
+  "items": [
+    {"sku": "A001", "price": 100, "qty": 2},
+    {"sku": "B002", "price": 50, "qty": 3}
+  ],
+  "status": "PAID"
+}

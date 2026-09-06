@@ -1,0 +1,45 @@
+version: "1.0"
+name: "ECommerce → CRM"
+
+options:
+  nullPolicy: "skip"
+  missingPolicy: "warn"
+
+rules:
+  - from: "orderId"
+    to: "crmOrder.id"
+
+  - from: "customer.name"
+    to: "crmOrder.buyer.name"
+    transform: "trim"
+
+  - from: "customer.email"
+    to: "crmOrder.buyer.email"
+    transform: "lower"
+
+  - from: "customer.addresses[*].city"
+    to: "crmOrder.buyer.cities[*]"
+
+  - from: "items[*].sku"
+    to: "crmOrder.lines[*].productCode"
+
+  - from: "items[*].price"
+    to: "crmOrder.lines[*].unitPrice"
+    transform: "multiply(1.13) | round(2)"
+
+  - from: "items[*].qty"
+    to: "crmOrder.lines[*].quantity"
+
+  - from: "status"
+    to: "crmOrder.state"
+    transform: "lower"
+
+computed:
+  - to: "crmOrder.totalAmount"
+    expr: "sum(crmOrder.lines[*].unitPrice * crmOrder.lines[*].quantity)"
+
+defaults:
+  - to: "crmOrder.currency"
+    value: "CNY"
+  - to: "crmOrder.source"
+    value: "eCommerce"

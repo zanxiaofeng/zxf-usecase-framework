@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>usecase-framework</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>data-transfer-test</artifactId>
+    <name>data-transfer-test</name>
+    <description>TransferSpec 契约测试工具：TransferAssert 流式断言 / Diff 结构化比对 / JUnit 5 扩展（配置即回归对象）</description>
+
+    <dependencies>
+        <!-- 框架本体 -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>data-transfer-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- JUnit Jupiter API：编译期需要，运行时由宿主工程提供 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Lombok：仅编译期 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 本模块自身测试 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

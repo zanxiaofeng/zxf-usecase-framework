@@ -1,0 +1,8 @@
+version: "1.0"
+name: "UnsupportedSources"
+sources:
+  - alias: "order"
+    path: "order"
+rules:
+  - from: "order.id"
+    to: "result.orderId"

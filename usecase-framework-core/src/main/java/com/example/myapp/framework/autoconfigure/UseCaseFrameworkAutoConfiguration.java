@@ -47,6 +47,7 @@ import com.example.myapp.framework.expression.StepExpressionEvaluator;
 import com.example.myapp.framework.http.RestClients;
 import com.example.myapp.framework.steps.CodecStep;
 import com.example.myapp.framework.steps.CodecStepFactory;
+import com.example.myapp.framework.steps.DataTransferStepFactory;
 import com.example.myapp.framework.steps.EventPublisherStepFactory;
 import com.example.myapp.framework.steps.HttpRequesterStepFactory;
 import com.example.myapp.framework.steps.LoggingStepFactory;
@@ -218,6 +219,18 @@ public class UseCaseFrameworkAutoConfiguration {
     @ConditionalOnMissingBean(name = "decoderStepFactory")
     StepFactory decoderStepFactory(Map<String, Codec> codecMap, StepExpressionEvaluator evaluator) {
         return new CodecStepFactory("decoder", CodecStep.Direction.DECODE, codecMap, evaluator);
+    }
+
+    /**
+     * 声明式数据搬运步骤（data-transfer-core 引擎包装）：config 引用 classpath 上的
+     * TransferSpec，装配期加载并 Schema 校验 fail-fast。优先复用容器 ObjectMapper。
+     */
+    @Bean
+    @ConditionalOnMissingBean(name = "dataTransferStepFactory")
+    StepFactory dataTransferStepFactory(StepExpressionEvaluator evaluator,
+                                        ObjectProvider<ObjectMapper> objectMapperProvider) {
+        ObjectMapper objectMapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
+        return new DataTransferStepFactory(evaluator, objectMapper);
     }
 
     // ------------------------------------------------------------------

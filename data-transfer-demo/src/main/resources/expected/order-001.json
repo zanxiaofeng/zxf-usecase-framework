@@ -1,0 +1,18 @@
+{
+  "crmOrder": {
+    "id": "ORD-20260906-001",
+    "buyer": {
+      "name": "Zhang San",
+      "email": "zhang@example.com",
+      "cities": ["Shanghai", "Beijing"]
+    },
+    "lines": [
+      {"productCode": "A001", "unitPrice": 113.00, "quantity": 2},
+      {"productCode": "B002", "unitPrice": 56.50, "quantity": 3}
+    ],
+    "state": "paid",
+    "totalAmount": 395.50,
+    "currency": "CNY",
+    "source": "eCommerce"
+  }
+}

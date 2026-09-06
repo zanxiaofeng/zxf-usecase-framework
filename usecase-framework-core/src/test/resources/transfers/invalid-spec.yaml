@@ -1,0 +1,6 @@
+version: "1.0"
+name: "InvalidOnPurpose"
+notARealKey: true
+rules:
+  - from: "a"
+    to: "b"

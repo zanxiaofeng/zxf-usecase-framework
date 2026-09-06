@@ -20,6 +20,9 @@
         <module>usecase-framework-core</module>
         <module>usecase-framework-test</module>
         <module>usecase-framework-demo</module>
+        <module>data-transfer-core</module>
+        <module>data-transfer-test</module>
+        <module>data-transfer-demo</module>
     </modules>
 
     <properties>
@@ -29,6 +32,10 @@
         <!-- Error Prone + NullAway 编译期空值检查（java-coding-standard §4.2；lombok 版本由 Boot BOM 管理） -->
         <error-prone.version>2.36.0</error-prone.version>
         <nullaway.version>0.12.7</nullaway.version>
+        <!-- data-transfer 自锁版本（Jackson/JUnit/Spring 随 Boot BOM，见 docs/基于JSON Flatten的声明式Data Transfer框架.md 附录 B） -->
+        <json-flattener.version>0.18.2</json-flattener.version>
+        <commons-jexl3.version>3.3</commons-jexl3.version>
+        <json-schema-validator.version>3.0.6</json-schema-validator.version>
     </properties>
 
     <build>

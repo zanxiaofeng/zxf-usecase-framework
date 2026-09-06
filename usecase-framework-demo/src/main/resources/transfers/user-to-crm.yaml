@@ -1,0 +1,16 @@
+# TransferSpec：UserDto(id, name) → CRM 视图
+# 由 dataTransfer step 引用（classpath:transfers/user-to-crm.yaml）；
+# 该文件即数据合同，可直接用 data-transfer-test 的 TransferAssert.assertThat() 做契约测试
+version: "1.0"
+name: "UserToCrmView"
+
+rules:
+  - from: "id"
+    to: "crm.userId"
+  - from: "name"
+    to: "crm.fullName"
+    transform: "trim"
+
+defaults:
+  - to: "crm.channel"
+    value: "usecase-framework"

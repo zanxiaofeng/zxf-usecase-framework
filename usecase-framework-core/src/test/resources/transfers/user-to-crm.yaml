@@ -1,0 +1,16 @@
+version: "1.0"
+name: "UserToCrmView"
+
+rules:
+  - from: "id"
+    to: "crm.userId"
+  - from: "name"
+    to: "crm.fullName"
+    transform: "trim"
+  - from: "email"
+    to: "crm.contact.email"
+    transform: "lower"
+
+defaults:
+  - to: "crm.channel"
+    value: "usecase-framework"

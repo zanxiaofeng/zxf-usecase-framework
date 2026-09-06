@@ -1,0 +1,7 @@
+version: "1.0"
+name: "assert-demo"
+rules:
+  - from: "orderId"
+    to: "crmOrder.id"
+  - from: "items[*].price"
+    to: "crmOrder.lines[*].unitPrice"

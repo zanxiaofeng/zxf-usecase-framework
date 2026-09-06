@@ -53,6 +53,14 @@
             <version>3.0.6</version>
         </dependency>
 
+        <!-- dataTransfer step：声明式数据搬运引擎（JSON Flatten → 规则映射 → Unflatten，
+             见 docs/基于JSON Flatten的声明式Data Transfer框架.md；json-flattener 0.18.2 / JEXL 随其传递） -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>data-transfer-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Lombok：仅编译期（provided + SOURCE retention），发布 jar 无运行期依赖；
              @Slf4j / @RequiredArgsConstructor / @UtilityClass 见 java-coding-standard §5.2 -->
         <dependency>

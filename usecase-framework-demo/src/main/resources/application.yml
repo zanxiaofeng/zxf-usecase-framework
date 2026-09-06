@@ -244,6 +244,33 @@ usecase:
             event: "T(com.example.myapp.domain.event.SnapshotCreatedEvent).of(#payload.snapshotId, #body.userId)"
             # publisher: 缺省取容器中唯一的 EventPublisher（demo 为 InMemoryEventPublisherAdapter）
 
+    # ---------------------------------------------------------------
+    # 用例六：声明式数据搬运（dataTransfer step；data-transfer-core 引擎的管道内包装）
+    # 子用例串联的 payload(UserDto) 经 TransferSpec 转换为 CRM 视图
+    # （Flatten → 规则映射 → Unflatten，spec 见 transfers/user-to-crm.yaml；
+    #   装配期 Schema 校验 fail-fast；未配 as → 转换结果覆盖 payload 即 API 响应数据）
+    # ---------------------------------------------------------------
+    - id: getUserCrmView
+      description: 查询用户并按 TransferSpec 转换为 CRM 视图
+      endpoint:
+        method: GET
+        path: /api/v1/users/{id}/crm
+      steps:
+        - name: start
+          type: starter
+          config:
+            keys:
+              businessId: "#path.id"
+        - name: loadUserBase
+          type: usecase
+          ref: userBaseEnrichment
+          config:
+            input: "#biz.businessId"
+        - name: toCrmView
+          type: dataTransfer
+          config:
+            spec: classpath:transfers/user-to-crm.yaml
+
 logging:
   level:
     usecase: DEBUG

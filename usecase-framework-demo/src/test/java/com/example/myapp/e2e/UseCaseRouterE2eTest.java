@@ -74,6 +74,17 @@ class UseCaseRouterE2eTest {
     }
 
     @Test
+    void getUserCrmView_transfersPayloadBySpec() throws Exception {
+        // dataTransfer step：UserDto 经 transfers/user-to-crm.yaml 转换为 CRM 视图（覆盖 payload）
+        mockMvc.perform(get("/api/v1/users/u1/crm"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("000000"))
+                .andExpect(jsonPath("$.data.crm.userId").value("u1"))
+                .andExpect(jsonPath("$.data.crm.fullName").value("Alice"))
+                .andExpect(jsonPath("$.data.crm.channel").value("usecase-framework"));
+    }
+
+    @Test
     void getUser_unknownId_returns404WithDomainErrorCode() throws Exception {
         mockMvc.perform(get("/api/v1/users/unknown"))
                 .andExpect(status().isNotFound())
