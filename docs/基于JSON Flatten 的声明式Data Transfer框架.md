@@ -1,6 +1,6 @@
 # 基于 JSON Flatten 的声明式 Data Transfer 框架 — 设计文档
 
-> **状态**：设计稿 v0.2（2026-09-06 review 修订）
+> **状态**：设计稿 v0.3（2026-09-06）——v0.2 完成结构重写与三模块/Jackson 3 基线裁定；v0.3 完成依赖选型收口（json-flattener 0.18.2、json-schema-validator 3.0.6，均已确认原生支持 Jackson 3）
 >
 > **基线**：Java 21 · Jackson 3（`tools.jackson.*`，全工程统一版本线）· Spring Boot 4（可选集成，非必需）
 >
@@ -680,6 +680,11 @@ public final class FlatMapProcessor {
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .build();
 
+    /** 解析/序列化统一入口：引擎与断言工具的 readTree 一并复用，保证 BigDecimal 语义贯穿 */
+    public JsonMapper mapper() {
+        return mapper;
+    }
+
     /** 将嵌套 JSON 树拍平为 {FlatKey: leaf}（对应 §5.1 算法） */
     public Map<String, Object> flatten(JsonNode root, String separator) {
         // Jackson3JsonValue 直接包装 JsonNode，无需序列化往返
@@ -714,7 +719,9 @@ public final class FlatMapProcessor {
 
 > **保留字符语义**：源键含 `.` / `[` 时，json-flattener 默认转义为 `matrix["agent.smith"]` 记法。此类键不属于 §3.1 路径语法，无法被规则或通配符匹配（天然无歧义），实际效果即"不可映射"，会体现在 `unmapped_source_keys` 观测指标中；`strictMode` 开启时引擎在首次 transfer 前对含转义记法的键直接 fail-fast（对应 §5.3-2）。库的 `ignoreReservedCharacters()`（忽略转义直接拼接）会产生歧义路径，不作为引擎暴露的配置。
 >
-> **数值精度**：拍平输入经由配置了 `USE_BIG_DECIMAL_FOR_FLOATS` 的 mapper 解析，浮点数保留为 `BigDecimal`；变换函数侧的算术亦按 BigDecimal 实现（§8.5 注）。
+> **数值精度**：`FlatMapProcessor` 持有配置了 `USE_BIG_DECIMAL_FOR_FLOATS` 的 mapper 并经 `mapper()` 暴露——引擎与断言工具的 `readTree` 与 flatten/unflatten 统一走该实例（§8.6），浮点数全程保留为 `BigDecimal`；变换函数侧的算术亦按 BigDecimal 实现（§8.5 注）。
+>
+> **API 注记**：`new JsonFlattener(new Jackson3JsonValue(root))`、实例链式 `flattenAsMap()` / `unflattenAsMap()`、`new JsonUnflattener(Map)` 构造等用法以 0.18.x javadoc 为准——官方 README 已证实 `Jackson3JsonValue` 包装 `JsonNode`、静态 `flattenAsMap(JsonValueBase)` 与静态 `unflattenAsMap(Map)`，其余实例/构造器变体为设计示意，落地时按实际 API 微调。
 >
 > `PathParser.parse("user.tags[0]", ".")` → `["user", "tags", 0]`，用于通配符多级对位与路径校验，实现与 §5.2 `parse_path` 一致。
 
@@ -771,7 +778,6 @@ public class TransferEngine {
     private final FlatMapProcessor flatProcessor = new FlatMapProcessor();
     private final FuncRegistry funcRegistry;
     private final ExpressionEvaluator exprEvaluator;
-    private final JsonMapper mapper = JsonMapper.builder().build();
 
     public TransferEngine(TransferSpec spec) {
         this(spec, Map.of(), new JexlExpressionEvaluator());
@@ -795,9 +801,10 @@ public class TransferEngine {
     }
 
     public JsonNode transfer(String sourceJson) {
-        // 1. 源数据拍平
+        // 1. 源数据拍平（readTree 复用 flatProcessor 的 BigDecimal mapper，精度语义贯穿）
         Map<String, Object> flatSrc = flatProcessor.flatten(
-                mapper.readTree(sourceJson), spec.getOptions().getSeparator());
+                flatProcessor.mapper().readTree(sourceJson),
+                spec.getOptions().getSeparator());
         Map<String, Object> flatTarget = new LinkedHashMap<>();
 
         // 2. 执行映射规则
@@ -1161,7 +1168,10 @@ public class OrderTransferDemo {
         },
         {
           "required": ["otherwise"],
-          "not": { "required": ["condition"] }
+          "allOf": [
+            { "not": { "required": ["condition"] } },
+            { "not": { "required": ["transform"] } }
+          ]
         }
       ]
     },
@@ -1256,7 +1266,7 @@ public class OrderTransferDemo {
 # 报错: .to: must match pattern [*] when from contains [*]
 ```
 
-**条件映射校验**——通过 `oneOf` 约束条件映射必须二选一：条件分支必须同时包含 `condition + transform`；兜底分支必须包含 `otherwise`。
+**条件映射校验**——通过 `oneOf` 约束条件映射必须二选一：条件分支必须同时包含 `condition + transform`；兜底分支必须包含 `otherwise`（且不得携带 `condition` / `transform`）。
 
 ```yaml
 # ✅ 合法
@@ -1281,7 +1291,7 @@ when:
 
 ### 9.3 Java 校验器实现【core，validation/ 包】
 
-依赖引入——networknt 采用**双发布线**，选用 3.x 线（Java 17+ / **Jackson 3**）；2.x 线对应 Jackson 2，与本基线不兼容，勿混用。注意 3.x 相对 1.5.x 是大版本重构，API 全面更新（`SchemaRegistry` / `Schema` / `List<Error>`），并**原生支持 JSON/YAML 输入**（schema 与数据均可）——`validateAndLoad` 可直接以 YAML 文本校验，省一次解析往返：
+依赖引入——networknt 采用**双发布线**，选用 3.x 线（Java 17+ / **Jackson 3**）；2.x 线对应 Jackson 2，与本基线不兼容，勿混用。注意 3.x 相对 1.5.x 是大版本重构，API 全面更新（`SchemaRegistry` / `Schema` / `List<Error>`），并**原生支持 JSON/YAML 输入**（schema 与数据均可）——`validateAndLoad` 可直接以 YAML 文本校验，省一次解析往返。以下代码为设计示意：README 已证实 `getSchema(String, InputFormat)` 与三参 `validate(String, InputFormat, Consumer<ExecutionContext>)` 形态，`withDefaultDialect` 单参重载、`validate` 双参重载等以 3.0.x javadoc 为准，落地时按实际 API 微调：
 
 ```xml
 <dependency>
@@ -2021,7 +2031,7 @@ public class BatchAssert {
         return batchResult;
     }
 
-    // loadResource：classpath 优先、文件系统兜底，见 §10.3 getResourceStream，从略
+    // loadResourceAsString：classpath 优先、文件系统兜底（同 §10.3 loadResourceAsString / getResourceStream），从略
 
     @Data
     private static class TestCase {
