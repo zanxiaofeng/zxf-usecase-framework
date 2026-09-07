@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
 
 import com.example.datatransfer.core.TransferEngine;
+import com.example.datatransfer.core.exception.TransferException;
 import com.example.datatransfer.core.spec.TransferSpec;
 import com.example.datatransfer.core.validation.TransferSpecValidator;
 import com.example.myapp.framework.assemble.StepConfigs;
@@ -55,7 +56,8 @@ public final class DataTransferStepFactory implements StepFactory {
         TransferEngine engine;
         try {
             engine = new TransferEngine(spec);
-        } catch (IllegalStateException e) {
+        } catch (TransferException e) {
+            // 构造期语义错误（未支持特性/通配数量/strictMode 重复目标等）统一包装为装配失败
             throw new UseCaseAssemblyException(
                     "step [%s]: TransferSpec '%s' rejected: %s".formatted(name, config.getSpec(), e.getMessage()), e);
         }

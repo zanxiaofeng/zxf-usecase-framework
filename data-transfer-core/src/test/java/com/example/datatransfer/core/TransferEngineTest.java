@@ -18,6 +18,9 @@ import com.example.datatransfer.core.spec.SourceDeclaration;
 import com.example.datatransfer.core.spec.TransferOptions;
 import com.example.datatransfer.core.flatten.FlatMapProcessor;
 import com.example.datatransfer.core.spec.TransferSpec;
+import com.example.datatransfer.core.exception.RuleMatchException;
+import com.example.datatransfer.core.exception.TransferAssemblyException;
+import com.example.datatransfer.core.exception.TransformException;
 
 import tools.jackson.databind.JsonNode;
 
@@ -126,7 +129,7 @@ class TransferEngineTest {
                 .rules(List.of(missing))
                 .build();
         assertThatThrownBy(() -> new TransferEngine(errorSpec).transfer("{}"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(RuleMatchException.class)
                 .hasMessageContaining("nope");
     }
 
@@ -204,8 +207,106 @@ class TransferEngineTest {
                 .rules(List.of(MappingRule.builder().from("x").to("y").build()))
                 .build();
         assertThatThrownBy(() -> new TransferEngine(withSources))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(TransferAssemblyException.class)
                 .hasMessageContaining("sources");
+    }
+
+    @Test
+    void transformFailure_carriesRuleContext() {
+        // 评审 4.2：TransformException 携带规则索引、路径、函数名与原始值
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("ctx")
+                .rules(List.of(
+                        MappingRule.builder().from("ok").to("a").build(),
+                        MappingRule.builder().from("price").to("out.amount")
+                                .transform("multiply(2)").build()))
+                .build();
+
+        assertThatThrownBy(() -> new TransferEngine(spec)
+                .transfer("{\"ok\": 1, \"price\": \"abc\"}"))
+                .isInstanceOf(TransformException.class)
+                .hasMessageContaining("rule #1")
+                .hasMessageContaining("[price -> out.amount]")
+                .hasMessageContaining("multiply")
+                .hasMessageContaining("abc");
+    }
+
+    @Test
+    void constructor_rejectsWildcardCountMismatch() {
+        // 评审 1.1：from 与 to 的 [*] 数量必须一致，否则多级对位静默错位
+        TransferSpec mismatch = TransferSpec.builder()
+                .version("1.0").name("wc-count")
+                .rules(List.of(MappingRule.builder()
+                        .from("data[*].tags[*]").to("out[*].all").build()))
+                .build();
+
+        assertThatThrownBy(() -> new TransferEngine(mismatch))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("wildcard count mismatch")
+                .hasMessageContaining("data[*].tags[*]");
+    }
+
+    @Test
+    void transformChain_shortCircuitsOnNullExceptDefault() {
+        // 评审 2.1：nullPolicy=KEEP 下 null 进链——普通函数短路跳过，default 兜底后链继续
+        TransferOptions keep = new TransferOptions();
+        keep.setNullPolicy(NullPolicy.KEEP);
+
+        TransferSpec plain = TransferSpec.builder()
+                .version("1.0").name("sc-null").options(keep)
+                .rules(List.of(MappingRule.builder().from("a").to("x")
+                        .transform("multiply(2) | upper").build()))
+                .build();
+        assertThat(new TransferEngine(plain).transfer("{\"a\": null}").path("x").isNull()).isTrue();
+
+        TransferSpec withDefault = TransferSpec.builder()
+                .version("1.0").name("sc-default").options(keep)
+                .rules(List.of(MappingRule.builder().from("a").to("x")
+                        .transform("multiply(2) | default('zero') | upper").build()))
+                .build();
+        assertThat(new TransferEngine(withDefault).transfer("{\"a\": null}")
+                .path("x").asString()).isEqualTo("ZERO");
+    }
+
+    @Test
+    void strictMode_rejectsReservedCharacterKeysAndDuplicateLiteralTargets() {
+        // 评审 3.4：保留字符转义记法在首 transfer 前 fail-fast（运行期 → RuleMatchException）
+        TransferSpec strict = TransferSpec.builder()
+                .version("1.0").name("strict")
+                .options(strictOptions())
+                .rules(List.of(MappingRule.builder().from("name").to("out").build()))
+                .build();
+        assertThatThrownBy(() -> new TransferEngine(strict)
+                .transfer("{\"matrix\": {\"agent.smith\": \"1999\"}, \"name\": \"n\"}"))
+                .isInstanceOf(RuleMatchException.class)
+                .hasMessageContaining("reserved-character");
+
+        // 评审 1.7：strictMode 下多条规则映射同一字面目标键即报错（构造期 → TransferAssemblyException）
+        TransferSpec duplicate = TransferSpec.builder()
+                .version("1.0").name("dup").options(strictOptions())
+                .rules(List.of(
+                        MappingRule.builder().from("a").to("x").build(),
+                        MappingRule.builder().from("b").to("x").build()))
+                .build();
+        assertThatThrownBy(() -> new TransferEngine(duplicate))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("duplicate literal target key 'x'");
+
+        // 非 strictMode：后覆盖前
+        TransferSpec overwrite = TransferSpec.builder()
+                .version("1.0").name("ow")
+                .rules(List.of(
+                        MappingRule.builder().from("a").to("x").build(),
+                        MappingRule.builder().from("b").to("x").build()))
+                .build();
+        assertThat(new TransferEngine(overwrite).transfer("{\"a\": 1, \"b\": 2}")
+                .path("x").asInt()).isEqualTo(2);
+    }
+
+    private static TransferOptions strictOptions() {
+        TransferOptions options = new TransferOptions();
+        options.setStrictMode(true);
+        return options;
     }
 
     @Test

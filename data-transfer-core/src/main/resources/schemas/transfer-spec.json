@@ -39,6 +39,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/DefaultValue" }
     },
+    "validations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ValidationRule" },
+      "description": "数据值校验：对目标 FlatMap（转换后的值）执行，时点在 defaults 后、Unflatten 前"
+    },
     "rewrites": {
       "type": "array",
       "items": { "$ref": "#/$defs/PathRewrite" }
@@ -64,6 +69,10 @@
         },
         "strictMode": {
           "type": "boolean", "default": false
+        },
+        "validationMode": {
+          "type": "string", "enum": ["fail_fast", "collect"], "default": "fail_fast",
+          "description": "validations 执行模式：fail_fast 首个失败即抛 / collect 收集全部失败"
         }
       }
     },
@@ -153,6 +162,36 @@
         "to": { "$ref": "#/$defs/PathExpression" },
         "value": { "type": ["string", "number", "boolean", "null"] }
       }
+    },
+    "ValidationRule": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/PathExpression" },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["assert", "message"],
+            "additionalProperties": false,
+            "properties": {
+              "assert": { "type": "string", "minLength": 1 },
+              "message": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "condition": { "type": "string", "minLength": 1 },
+        "message": {
+          "type": "string", "minLength": 1,
+          "description": "condition 形态的失败消息（必填）；rules 形态用断言内的 message"
+        }
+      },
+      "oneOf": [
+        { "required": ["rules"], "not": { "required": ["condition"] } },
+        { "required": ["condition", "message"], "not": { "required": ["rules"] } }
+      ]
     },
     "PathRewrite": {
       "type": "object",

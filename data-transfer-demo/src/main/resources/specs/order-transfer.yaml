@@ -43,3 +43,16 @@ defaults:
     value: "CNY"
   - to: "crmOrder.source"
     value: "eCommerce"
+
+validations:
+  - path: "crmOrder.lines[*].unitPrice"
+    rules:
+      - assert: "gt(0)"
+        message: "单价必须大于0"
+  - path: "crmOrder.lines[*]"
+    condition: "unitPrice > 0 && quantity > 0"
+    message: "单价和数量必须同时大于0"
+  - path: "crmOrder.buyer.email"
+    rules:
+      - assert: "regex('^[\\w.-]+@[\\w.-]+\\.\\w+$')"
+        message: "邮箱格式非法"

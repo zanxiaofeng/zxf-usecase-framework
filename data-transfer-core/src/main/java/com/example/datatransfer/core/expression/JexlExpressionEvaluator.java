@@ -7,10 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import org.apache.commons.jexl3.JexlBuilder;
 import org.apache.commons.jexl3.JexlEngine;
 import org.apache.commons.jexl3.MapContext;
+import org.apache.commons.jexl3.introspection.JexlSandbox;
 
 import com.example.datatransfer.core.flatten.FlatMapProcessor;
 
@@ -33,7 +35,24 @@ public final class JexlExpressionEvaluator implements ExpressionEvaluator {
     /** 聚合操作数分割时保护 [*] 内 '*' 的占位符 */
     private static final String WILDCARD_GUARD = "__WC__";
 
-    private final JexlEngine engine = new JexlBuilder().create();
+    /**
+     * 安全沙箱（评审 3.5）：白名单模式——仅放行嵌套视图导航所需的基础类型与集合类，
+     * {@code T(...)} 静态访问与 {@code new} 反射构造一律禁止（表达式来自 spec 配置，
+     * 默认按不可信输入对待）。
+     */
+    private static final JexlEngine ENGINE = new JexlBuilder()
+            .sandbox(sandbox())
+            .create();
+
+    private static JexlSandbox sandbox() {
+        JexlSandbox sandbox = new JexlSandbox(true);   // 白名单模式：未列出的类禁止构造与执行
+        Stream.of("java.util.Map", "java.util.List", "java.lang.String", "java.lang.Number",
+                        "java.lang.Integer", "java.lang.Long", "java.lang.Double",
+                        "java.lang.Boolean", "java.math.BigDecimal")
+                .forEach(sandbox::allow);
+        return sandbox;
+    }
+
     private final FlatMapProcessor flatProcessor = new FlatMapProcessor();
 
     @Override
@@ -96,7 +115,7 @@ public final class JexlExpressionEvaluator implements ExpressionEvaluator {
         MapContext jexlContext = new MapContext();
         flatProcessor.unflattenToMap(context, ".")
                 .forEach(jexlContext::set);
-        return engine.createExpression(expr).evaluate(jexlContext);
+        return ENGINE.createExpression(expr).evaluate(jexlContext);
     }
 
     private static BigDecimal sum(List<BigDecimal> values) {

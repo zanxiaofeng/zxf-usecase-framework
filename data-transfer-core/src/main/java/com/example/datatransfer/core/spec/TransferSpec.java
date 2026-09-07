@@ -47,6 +47,9 @@ public class TransferSpec {
     /** 默认值：仅当目标键不存在时注入 */
     private List<DefaultValue> defaults = new ArrayList<>();
 
+    /** 数据值校验（评审 6.x）：对目标 FlatMap 执行，时点在 defaults 后、Unflatten 前 */
+    private List<ValidationRule> validations = new ArrayList<>();
+
     /** 可观测性配置（第一版仅模型承载，不产生埋点） */
     private ObservabilityConfig observability;
 
@@ -57,6 +60,10 @@ public class TransferSpec {
 
     public List<DefaultValue> defaultsOrEmpty() {
         return defaults == null ? List.of() : defaults;
+    }
+
+    public List<ValidationRule> validationsOrEmpty() {
+        return validations == null ? List.of() : validations;
     }
 
     public TransferOptions optionsOrNew() {

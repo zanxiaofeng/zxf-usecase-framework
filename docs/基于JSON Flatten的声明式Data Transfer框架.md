@@ -461,6 +461,38 @@ engine.dry_run(source)
 # 返回: { "planned_mappings": [...], "warnings": [...], "estimated_output": {...} }
 ```
 
+### 6.7 数据值校验（validations，v1.1 已实现）
+
+对**目标 FlatMap**（转换后的值）的校验段，执行时点在 rules + computed + defaults 全部完成后、
+Unflatten 之前——校验失败即抛 `ValidationException`（携带结构化失败明细），不生成脏数据。
+与 §9 的 Schema 校验互补：Schema 管**配置文件格式**，validations 管**转换过程中的数据值**
+（`price: -100` 不再被忠实映射成 `unitPrice: -113.0`）。
+
+```yaml
+validations:
+  # 单字段断言（path 可含 [*] 逐元素断言；断言内自带 message）
+  - path: "crmOrder.lines[*].unitPrice"
+    rules:
+      - assert: "gt(0)"
+        message: "单价必须大于0"
+      - assert: "regex('^[\\w.-]+@[\\w.-]+\\.\\w+$')"
+        message: "邮箱格式非法"
+
+  # 组合条件（JEXL；path 为元素路径时裸标识符解析为该元素字段；外层 message 必填）
+  - path: "crmOrder.lines[*]"
+    condition: "unitPrice > 0 && quantity > 0"
+    message: "单价和数量必须同时大于0"
+```
+
+- **断言谓词**（内置，构造期校验语法与参数格式、未知谓词 fail-fast）：`gt(n)` / `gte(n)` /
+  `lt(n)` / `lte(n)` / `eq(v)` / `neq(v)`（数值比较走 BigDecimal）+ `regex('pattern')` +
+  `notNull` / `notBlank`；字面键不存在时以 null 值执行断言（`notNull` 场景需要）。
+  `fn:` 自定义断言不做——复杂判断走 `condition`（JEXL，表达力等价且已过沙箱加固）。
+- **执行模式**（`options.validationMode`）：`fail_fast`（默认，首个失败即抛，入参校验场景）/
+  `collect`（收集全部失败后统一抛，数据迁移场景）；`ValidationException#getFailures()` 取
+  `List<ValidationFailure{path, rule, message, actualValue}>`。
+- **限制**：condition 形态的 path 至多一级 `[*]`（多级元素语义歧义，断言形态无此限制）。
+
 ---
 
 ## 七、完整示例：电商订单 → CRM
@@ -2650,3 +2682,43 @@ data-transfer-sdk/                               # 聚合根（父 POM）
 ### C.3 第一版裁剪清单（装配期/构造期 fail-fast 拒绝，不静默忽略）
 
 `sources`（多源合并）与 `rewrites`（路径改写）保留模型字段但引擎构造期抛「not yet supported」；未实现：批量模式 `transfer_batch`、dry-run、`fn:` 前缀函数语法（自定义函数经构造器 `extraFunctions` 注册后直接以函数名引用）、指标埋点（ObservabilityConfig 仅模型承载）、§3.2 函数表中的其余内置函数（已实现 trim/lower/upper/replace/multiply/round/default，其余经 FuncRegistry.register 扩展）。
+
+---
+
+## 附录 D：评审采纳记录（2026-09-07，v1.0.1 → v1.1）
+
+外部评审 47 条建议的核对与处置：9 条已被实现/实测推翻（missingPolicy 已实现、空容器实测保留而非丢失、networknt 3.x 无 Jackson 2 传递、数值已 BigDecimal、线程安全已声明、mapper 配置不可变、Batch 每 case 独立引擎、路径转义已统一 wildcardPattern、自定义分隔符校验边界已注明）；5 条不采纳（表达式 IR 编译、Builder 替代构造器、契约测试 Trie、ByteBuddy JIT、FlatMap 容量预计算——均与当前规模/「配置即合同」定位不匹配）。
+
+**v1.1 追加裁定落地**（六模块全绿）：① 异常体系（评审 4.2）——`TransferException` 基类 +
+`TransferAssemblyException`（构造期）/ `RuleMatchException`（运行期匹配）/ `TransformException`
+（变换链，携带规则索引、from/to、函数名与当前值）/ `ValidationException`（校验失败，携带
+`List<ValidationFailure>`）；usecase 侧工厂 catch 同步为 `TransferException`，类型化后可经
+usecase `errorMappings` 把数据类错误映射 4xx。② validations 校验段（评审六，A 方案完整实现）——
+见 §6.7。③ 标量→数组广播（评审 2.8）维持禁止（实现需打破规则顺序无关性；usecase 场景 SpEL
+列表投影已等价）。
+
+### D.1 本轮已修复（构造期/运行期语义固化，46/46 测试）
+
+| 评审项 | 固化语义 |
+|---|---|
+| 1.1 通配数量 | `from` 与 `to` 的 `[*]` 数量必须一致，引擎构造期 fail-fast（报错含规则索引与路径；Schema 仅约束有无，数量校验归引擎） |
+| 2.1 链 null 短路 | 变换链中间结果为 null 时跳过后续函数，仅 `default()` 兜底函数例外（default(null) → 缺省值后链继续）；最终仍 null 按 `nullPolicy` 处置 |
+| 1.7 目标键冲突 | 默认「后规则覆盖前规则」；`strictMode: true` 时构造期检测**字面目标键**重复即报错（通配目标的数据期覆盖维持"后覆盖前"——构造期不可穷举） |
+| 3.4 strictMode 保留字符 | `strictMode: true` 时首 transfer 前对含 `["` 转义记法的源键 fail-fast（§5.3-2 承诺补齐） |
+| 3.5 JEXL 沙箱 | `JexlSandbox(true)` 白名单模式：仅放行 Map/List/String/Number/Integer/Long/Double/Boolean/BigDecimal，`new('类')` 构造被拒（JexlException）、反射链静默 null（不可见即不执行）；注：`T(...)` 是 SpEL 语法，JEXL 中天然不可达 |
+
+### D.2 设计采纳、列入路线图（评审建议，待实现）
+
+- **1.4 rewrites 时机**：Phase 1（拍平后）与 Phase 2（规则匹配前）之间，按声明顺序串行应用于源 FlatMap 所有键
+- **1.6/9.2 多源约束**：各源拍平后以 `alias.` 根前缀合并；规则 `from` 必须以某 alias 开头（否则按 missingPolicy 处置）；装配期 alias 唯一性校验
+- **1.3 computed 依赖**：按声明顺序执行（当前实现已隐式支持前向引用——flatTarget 逐步更新），补拓扑循环检测；后向引用以运行期求值失败暴露
+- **2.5 日期函数**：默认 UTC + 可选时区参数（函数族实现时执行）
+- **2.9 coalesce**：Phase 2 执行，仅引用源 FlatMap 路径
+- **2.10 类型转换函数族**：`toEnum(className)` / `toLocalDate(fmt)` / `toLocalDateTime(fmt)` / `toBigDecimal`（金额场景替代 toNumber）；不引入独立 ConversionHandler（保持 TransformFunction 单一扩展点，接口文档补类型转换专项示例）
+- **3.1/9.3 数组稀疏**：索引忠实传递（`items[1]` → `lineItems[1]`，空洞由 Unflattener 垫槽位为 null——当前实现即此行为，文档固化）；压缩重排经显式变换函数
+- **2.3 otherwise 字面量**：可加 `const(v)` 内置函数实现无条件字面输出（default 仅兜 null 的语义不变）
+- **2.4 函数参数编译期校验**：内置函数数值参数装配期正则校验（`multiply("abc")` 提前拦截）
+- **4.3/4.4**：dry-run 输出结构标准化（planned_mappings/warnings/estimated_output 入 Schema）；`version` 兼容性策略（1.x 向后兼容）
+- **7.1 passthrough**：整棵子树原样搬运（不进拍平管道），大 JSON 少字段场景的逃逸阀
+- **2.8 标量→数组广播**：维持第一版禁止（与索引对齐语义正交）；广播需求收集后再放宽 Schema
+- **8.1/8.2 可观测性**：审计日志结构化（OpenTelemetry 语义约定）、指标收集时机与去重策略——随指标埋点排期

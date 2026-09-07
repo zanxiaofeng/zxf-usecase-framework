@@ -18,4 +18,7 @@ public class TransferOptions {
 
     /** true 时装配后首次 transfer 前对含保留字符转义记法的源键 fail-fast（设计文档 §5.3-2） */
     private boolean strictMode = false;
+
+    /** validations 执行模式（评审 6.3）：FAIL_FAST 首个失败即抛 / COLLECT 收集全部失败 */
+    private ValidationMode validationMode = ValidationMode.FAIL_FAST;
 }
