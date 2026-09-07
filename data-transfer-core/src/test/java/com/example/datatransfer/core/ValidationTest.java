@@ -129,6 +129,26 @@ class ValidationTest {
     }
 
     @Test
+    void numericAssertion_treatsNullAsFailure_notBareNfe() {
+        // review P1：gt/gte/lt/lte 遇 null 值判定为校验失败（记 ValidationFailure），而非裸 NumberFormatException
+        TransferOptions keepNull = new TransferOptions();
+        keepNull.setValidationMode(ValidationMode.COLLECT);
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("null-assert").options(keepNull)
+                .rules(List.of(MappingRule.builder().from("price").to("out.price").build()))
+                .validations(List.of(ValidationRule.builder()
+                        .path("out.price")
+                        .rules(List.of(Assertion.builder().assertExpr("gt(0)").message("单价必须大于0").build()))
+                        .message("required").build()))
+                .build();
+
+        assertThatThrownBy(() -> new TransferEngine(spec).transfer("{\"price\": null}"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("out.price")
+                .hasMessageContaining("单价必须大于0");
+    }
+
+    @Test
     void constructor_rejectsMalformedValidations() {
         // rules 与 condition 二选一
         assertThatThrownBy(() -> new TransferEngine(spec(ValidationRule.builder()

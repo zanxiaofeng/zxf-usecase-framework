@@ -247,6 +247,23 @@ class TransferEngineTest {
     }
 
     @Test
+    void constructor_rejectsCustomSeparator() {
+        // review P1：表达式侧（computed/when/condition）按 "." 拍还原——自定义 separator 会静默失配，
+        // 构造期 fail-fast 而非静默（对齐 sources/rewrites 哲学）
+        TransferOptions options = new TransferOptions();
+        options.setSeparator("/");
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("sep").options(options)
+                .rules(List.of(MappingRule.builder().from("a").to("b").build()))
+                .build();
+
+        assertThatThrownBy(() -> new TransferEngine(spec))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("custom separator '/'")
+                .hasMessageContaining("not yet supported");
+    }
+
+    @Test
     void transformChain_shortCircuitsOnNullExceptDefault() {
         // 评审 2.1：nullPolicy=KEEP 下 null 进链——普通函数短路跳过，default 兜底后链继续
         TransferOptions keep = new TransferOptions();

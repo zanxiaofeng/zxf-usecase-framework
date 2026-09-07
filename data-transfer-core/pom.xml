@@ -73,10 +73,15 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- 测试 -->
+        <!-- 测试（hibernate-validator：@Validated 配置校验的运行期实现，宿主 Boot 应用由 starter 传递） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

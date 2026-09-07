@@ -132,8 +132,8 @@ public class TransferAssert {
         Map<String, Object> expectedFlat = flatProcessor.flatten(mapper.readTree(expectedJson), ".");
         Map<String, Object> actualFlat = flatProcessor.flatten(mapper.readTree(actualJson), ".");
 
-        removeIgnoredPaths(expectedFlat);
-        removeIgnoredPaths(actualFlat);
+        removeIgnoredPaths(expectedFlat, ignorePaths);
+        removeIgnoredPaths(actualFlat, ignorePaths);
 
         DiffResult diff = DiffEngine.diff(expectedFlat, actualFlat, compareMode);
         if (!diff.isEmpty()) {
@@ -145,7 +145,8 @@ public class TransferAssert {
         return new TransferEngine(spec, customFunctions);
     }
 
-    private void removeIgnoredPaths(Map<String, Object> flatMap) {
+    /** 动态路径排除（主流程 diff 与 {@link AssertContext} 链式断言共用的同一口径） */
+    static void removeIgnoredPaths(Map<String, Object> flatMap, List<String> ignorePaths) {
         for (String ignorePath : ignorePaths) {
             Pattern pattern = jsonPathToRegex(ignorePath);
             flatMap.keySet().removeIf(key -> pattern.matcher(key).matches());
@@ -156,11 +157,11 @@ public class TransferAssert {
         StringBuilder sb = new StringBuilder();
         sb.append("\nTransferSpec 契约测试失败 [spec: ").append(spec.getName()).append("]\n");
         sb.append("差异明细:\n");
-        for (DiffEntry entry : diff.getEntries()) {
-            sb.append("  路径: ").append(entry.getPath())
-                    .append(" | 类型: ").append(entry.getType())
-                    .append(" | 期望: ").append(entry.getExpected())
-                    .append(" | 实际: ").append(entry.getActual()).append('\n');
+        for (DiffEntry entry : diff.entries()) {
+            sb.append("  路径: ").append(entry.path())
+                    .append(" | 类型: ").append(entry.type())
+                    .append(" | 期望: ").append(entry.expected())
+                    .append(" | 实际: ").append(entry.actual()).append('\n');
         }
         sb.append("实际输出: ").append(actualJson);
         return sb.toString();

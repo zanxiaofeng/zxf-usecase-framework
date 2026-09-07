@@ -1,5 +1,6 @@
 package com.example.datatransfer.test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -96,6 +97,60 @@ class TransferAssertTest {
                 .pathExists("crmOrder.missing"))
                 .isInstanceOf(AssertionError.class)
                 .hasMessageContaining("crmOrder.missing");
+    }
+
+    @Test
+    void execute_appliesIgnorePathsToChainedAssertions() {
+        // review P1：链式断言与主流程口径统一——ignorePaths 在 AssertContext 构造期排除
+        TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .ignorePaths("crmOrder.lines[*].unitPrice")
+                .execute()
+                .pathExists("crmOrder.id")
+                .pathNotExists("crmOrder.lines[0].unitPrice");
+    }
+
+    @Test
+    void pathValueEquals_comparesNumericsLooselyLikeDiffEngine() {
+        // review P1：与 DiffEngine 同口径——数值跨形态宽松（实际 100 int vs 期望 100.0 double）
+        TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute()
+                .pathValueEquals("crmOrder.lines[0].unitPrice", 100.0);
+    }
+
+    @Test
+    void allPathValues_wrapsAssertionErrorWithFailingValueContext() {
+        // review P1：AssertJ/JUnit 断言抛 AssertionError——包装进「哪个值失败」的上下文而非裸抛
+        String negativePrice = """
+                {"orderId": "ORD-9", "items": [{"price": 100}, {"price": -5}]}
+                """;
+
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(negativePrice)
+                .execute()
+                .allPathValues("crmOrder.lines[*].unitPrice",
+                        v -> assertThat(((Number) v).doubleValue()).isPositive()))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("crmOrder.lines[*].unitPrice")
+                .hasMessageContaining("-5");
+    }
+
+    @Test
+    void batchAssert_rejectsEmptyCaseList() {
+        // review P2：空 case 静默通过是假绿，runAll 前置防护
+        assertThatThrownBy(() -> TransferAssert.batchAssert("specs/assert-demo.yaml").runAll())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no test cases");
+    }
+
+    @Test
+    void batchAssert_passesRegisteredFunctionsThrough() {
+        // review P2：spec 使用自定义函数时，BatchAssert 也能注册（此前无入口、批量断言必失败）
+        TransferAssert.batchAssert("specs/shout-demo.yaml")
+                .addCaseJson("{\"name\": \"ok\"}", "{\"shouted\": \"OK!\"}")
+                .registerFunction("shout", (v, args, ctx) -> String.valueOf(v).toUpperCase() + "!")
+                .runAll();
     }
 
     @Test

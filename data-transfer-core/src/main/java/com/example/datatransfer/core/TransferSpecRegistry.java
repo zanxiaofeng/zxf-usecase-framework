@@ -12,6 +12,7 @@ public final class TransferSpecRegistry {
     private final Map<String, TransferEngine> engines = new ConcurrentHashMap<>();
 
     public void register(TransferSpec spec) {
+        Objects.requireNonNull(spec, "spec must not be null");
         register(spec.getName(), new TransferEngine(spec));
     }
 

@@ -1,5 +1,6 @@
 package com.example.datatransfer.test;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,7 @@ public final class DiffEngine {
             String path = entry.getKey();
             if (!actual.containsKey(path)) {
                 entries.add(DiffEntry.missing(path, entry.getValue()));
-            } else if (!valuesEqual(entry.getValue(), actual.get(path))) {
+            } else if (!looseEquals(entry.getValue(), actual.get(path))) {
                 entries.add(DiffEntry.mismatch(path, entry.getValue(), actual.get(path)));
             }
         }
@@ -37,23 +38,29 @@ public final class DiffEngine {
     }
 
     /**
-     * 数值宽松比较：113 与 113.00 等价（YAML 期望文件常把数字读成字符串，
-     * 故对 String↔Number 做单向宽松化，仅放宽期望侧）。
+     * 数值宽松比较（diff 与链式断言的统一口径）：113 与 113.00 等价——
+     * BigDecimal {@code compareTo} 精确比较，超过 2^53 的大整数不经 double 中转、不丢精度；
+     * YAML 期望文件常把数字读成字符串，故对 String↔Number 做单向宽松化（仅放宽期望侧）。
      */
-    private static boolean valuesEqual(Object expected, Object actual) {
+    static boolean looseEquals(Object expected, Object actual) {
         if (Objects.equals(expected, actual)) {
             return true;
         }
         if (expected instanceof Number expNumber && actual instanceof Number actNumber) {
-            return Double.compare(expNumber.doubleValue(), actNumber.doubleValue()) == 0;
+            return toDecimal(expNumber).compareTo(toDecimal(actNumber)) == 0;
         }
         if (expected instanceof String expString && actual instanceof Number actNumber) {
             try {
-                return Double.parseDouble(expString) == actNumber.doubleValue();
+                return new BigDecimal(expString).compareTo(toDecimal(actNumber)) == 0;
             } catch (NumberFormatException ignored) {
                 return false;
             }
         }
         return false;
+    }
+
+    /** Number → BigDecimal：走 {@code toString} 而非 {@code doubleValue}，浮点/大整数无损 */
+    private static BigDecimal toDecimal(Number number) {
+        return number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());
     }
 }

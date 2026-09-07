@@ -68,4 +68,34 @@ class JexlExpressionEvaluatorTest {
 
         assertThat(((java.math.BigDecimal) result)).isEqualByComparingTo("30");
     }
+
+    @Test
+    void aggregate_twoOperandIndexMismatchFailsFast() {
+        // review P0：SKIP 策略下两侧索引集合不同（左 [0],[2] vs 右 [0],[1]）——按位置配对会
+        // 静默错位相乘（100×2 + 7×3=221）；索引配对下必须报错，宁可失败不错数据
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("items[0].p", 100);
+        context.put("items[2].p", 7);
+        context.put("items[0].q", 2);
+        context.put("items[1].q", 3);
+
+        assertThatThrownBy(() -> evaluator.evaluate(
+                "sum(items[*].p * items[*].q)", context))
+                .isInstanceOf(com.example.datatransfer.core.exception.TransferException.class)
+                .hasMessageContaining("index mismatch");
+    }
+
+    @Test
+    void aggregate_alignedIndexesPairCorrectly() {
+        // 索引集合一致时（即使文档序中交错）按索引正确配对
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("items[0].p", 100);
+        context.put("items[1].p", 7);
+        context.put("items[1].q", 3);
+        context.put("items[0].q", 2);   // 故意乱序
+
+        Object result = evaluator.evaluate("sum(items[*].p * items[*].q)", context);
+
+        assertThat(((java.math.BigDecimal) result)).isEqualByComparingTo("221");
+    }
 }

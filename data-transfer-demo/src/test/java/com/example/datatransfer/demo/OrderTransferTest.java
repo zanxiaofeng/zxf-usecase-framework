@@ -60,10 +60,11 @@ class OrderTransferTest {
     @Test
     void negativePrice_rejectedByValidations() throws Exception {
         // validations 段（评审 6.x）：负单价在 Unflatten 前被拦（不产脏数据），YAML 键 assert 正确绑定
-        TransferEngine engine = new TransferEngine(
-                new TransferSpecValidator().validateAndLoad(
-                        OrderTransferContractTest.class.getResourceAsStream("/specs/order-transfer.yaml"),
-                        "specs/order-transfer.yaml"));
+        TransferEngine engine;
+        try (var in = getClass().getResourceAsStream("/specs/order-transfer.yaml")) {
+            engine = new TransferEngine(
+                    VALIDATOR.validateAndLoad(in, "specs/order-transfer.yaml"));
+        }
 
         assertThatThrownBy(() -> engine.transfer("{\"orderId\": \"ORD-9\", "
                 + "\"customer\": {\"name\": \"Ann\", \"email\": \"a@x.com\", \"addresses\": []}, "

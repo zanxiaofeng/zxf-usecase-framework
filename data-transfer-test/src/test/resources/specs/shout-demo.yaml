@@ -1,0 +1,6 @@
+version: "1.0"
+name: "shout-demo"
+rules:
+  - from: "name"
+    to: "shouted"
+    transform: "shout"

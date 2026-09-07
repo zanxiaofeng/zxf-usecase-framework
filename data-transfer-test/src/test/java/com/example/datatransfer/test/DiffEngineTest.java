@@ -21,14 +21,14 @@ class DiffEngineTest {
         DiffResult result = DiffEngine.diff(expected, actual, TransferAssert.CompareMode.STRICT);
 
         assertThat(result.size()).isEqualTo(2);
-        assertThat(result.getEntries())
+        assertThat(result.entries())
                 .anySatisfy(e -> {
-                    assertThat(e.getType()).isEqualTo(DiffType.MISSING);
-                    assertThat(e.getPath()).isEqualTo("a.gone");
+                    assertThat(e.type()).isEqualTo(DiffType.MISSING);
+                    assertThat(e.path()).isEqualTo("a.gone");
                 })
                 .anySatisfy(e -> {
-                    assertThat(e.getType()).isEqualTo(DiffType.UNEXPECTED);
-                    assertThat(e.getPath()).isEqualTo("a.extra");
+                    assertThat(e.type()).isEqualTo(DiffType.UNEXPECTED);
+                    assertThat(e.path()).isEqualTo("a.extra");
                 });
     }
 
@@ -55,6 +55,16 @@ class DiffEngineTest {
         // 反向不宽松：实际侧字符串不与期望数字等价
         assertThat(DiffEngine.diff(Map.of("p", 113.0), Map.of("p", "113.0"),
                 TransferAssert.CompareMode.STRICT).isEmpty()).isFalse();
+    }
+
+    @Test
+    void bigIntegers_compareWithoutDoublePrecisionLoss() {
+        // review P1：> 2^53 的大整数经 double 中转会舍入漏检（旧 Double.compare 路径下两者相等），
+        // BigDecimal compareTo 精确比较
+        assertThat(DiffEngine.diff(Map.of("p", 9_007_199_254_740_993L), Map.of("p", 9_007_199_254_740_992L),
+                TransferAssert.CompareMode.STRICT).isEmpty()).isFalse();
+        assertThat(DiffEngine.diff(Map.of("p", 9_007_199_254_740_993L), Map.of("p", 9_007_199_254_740_993L),
+                TransferAssert.CompareMode.STRICT).isEmpty()).isTrue();
     }
 
     @Test

@@ -38,15 +38,17 @@ public final class PathParser {
     public static String toPath(List<Object> segments, String separator) {
         StringBuilder sb = new StringBuilder();
         for (Object seg : segments) {
-            if (seg instanceof Integer idx) {
-                sb.append('[').append(idx).append(']');
-            } else if (WILDCARD.equals(seg)) {
-                sb.append(WILDCARD);
-            } else {
-                if (!sb.isEmpty()) {
-                    sb.append(separator);
+            switch (seg) {
+                case Integer idx -> sb.append('[').append(idx).append(']');
+                case String wildcard when WILDCARD.equals(wildcard) -> sb.append(WILDCARD);
+                case String identifier -> {
+                    if (!sb.isEmpty()) {
+                        sb.append(separator);
+                    }
+                    sb.append(identifier);
                 }
-                sb.append(seg);
+                default -> throw new IllegalArgumentException(
+                        "unsupported path segment type: " + seg.getClass().getSimpleName());
             }
         }
         return sb.toString();

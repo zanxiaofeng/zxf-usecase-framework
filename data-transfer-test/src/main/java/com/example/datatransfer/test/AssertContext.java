@@ -2,12 +2,8 @@ package com.example.datatransfer.test;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -21,14 +17,16 @@ public class AssertContext {
 
     private final Map<String, Object> actualFlatMap;
     private final JsonNode actualNested;
-    private final List<String> ignorePaths;
 
     private final FlatMapProcessor flatProcessor = new FlatMapProcessor();
 
     public AssertContext(JsonNode actualResult, List<String> ignorePaths) {
         this.actualNested = actualResult;
-        this.actualFlatMap = flatProcessor.flatten(actualResult, ".");
-        this.ignorePaths = ignorePaths;
+        // 与主流程（matchesExpected 前的 removeIgnoredPaths）同口径：动态路径排除
+        // 在构造期一次性应用到链式断言所用的 FlatMap，避免两套断言口径不一致
+        Map<String, Object> flat = flatProcessor.flatten(actualResult, ".");
+        TransferAssert.removeIgnoredPaths(flat, ignorePaths);
+        this.actualFlatMap = flat;
     }
 
     /**
@@ -59,10 +57,10 @@ public class AssertContext {
                 .anyMatch(key -> exact.matcher(key).matches() || ancestor.matcher(key).matches());
     }
 
-    /** 断言指定路径的值等于期望值 */
+    /** 断言指定路径的值等于期望值（数值宽松口径与 diff 引擎一致：113 ≡ 113.00） */
     public AssertContext pathValueEquals(String jsonPath, Object expected) {
         Object actual = resolveSingleValue(jsonPath);
-        if (!Objects.equals(expected, actual)) {
+        if (!DiffEngine.looseEquals(expected, actual)) {
             throw new AssertionError("路径 " + jsonPath + " 期望等于 " + expected + "，实际为 " + actual);
         }
         return this;
@@ -104,12 +102,12 @@ public class AssertContext {
         return this;
     }
 
-    /** 断言指定路径的值在指定集合中 */
+    /** 断言指定路径的值在指定集合中（数值宽松口径与 diff 引擎一致） */
     public AssertContext pathValueIn(String jsonPath, Object... candidates) {
         Object actual = resolveSingleValue(jsonPath);
-        Set<Object> candidateSet = new HashSet<>(Arrays.asList(candidates));
-        if (!candidateSet.contains(actual)) {
-            throw new AssertionError("路径 " + jsonPath + " 期望在集合 " + candidateSet + " 中，实际为 " + actual);
+        boolean matched = Arrays.stream(candidates).anyMatch(c -> DiffEngine.looseEquals(c, actual));
+        if (!matched) {
+            throw new AssertionError("路径 " + jsonPath + " 期望在集合 " + Arrays.toString(candidates) + " 中，实际为 " + actual);
         }
         return this;
     }
@@ -133,20 +131,14 @@ public class AssertContext {
         if (matched.isEmpty()) {
             throw new AssertionError("路径 " + jsonPath + " 期望至少有一个匹配值，实际无匹配路径");
         }
-        AtomicReference<Object> failingValue = new AtomicReference<>();
-        RuntimeException failure = null;
         for (Map.Entry<String, Object> entry : matched) {
             try {
                 valueAssert.accept(entry.getValue());
-            } catch (RuntimeException e) {
-                failingValue.set(entry.getValue());
-                failure = e;
-                break;
+            } catch (AssertionError | RuntimeException e) {
+                // 转换重抛：包装为带「哪个值失败」上下文的 AssertionError（保留 cause）
+                throw new AssertionError("路径 " + jsonPath + " 的值 " + entry.getValue()
+                        + " 不满足断言: " + e.getMessage(), e);
             }
-        }
-        if (failure != null) {
-            throw new AssertionError("路径 " + jsonPath + " 的值 " + failingValue.get()
-                    + " 不满足断言: " + failure.getMessage());
         }
         return this;
     }
@@ -156,14 +148,9 @@ public class AssertContext {
         return actualNested;
     }
 
-    /** 获取拍平后的结果 */
+    /** 获取拍平后的结果（已应用 ignorePaths 排除） */
     public Map<String, Object> getActualFlatMap() {
         return Collections.unmodifiableMap(actualFlatMap);
-    }
-
-    /** ignorePaths 透传（execute() 前声明的动态路径排除） */
-    List<String> ignorePaths() {
-        return ignorePaths;
     }
 
     private Object resolveSingleValue(String jsonPath) {

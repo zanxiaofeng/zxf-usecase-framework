@@ -1,5 +1,6 @@
 package com.example.datatransfer.demo;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
@@ -19,15 +20,13 @@ public final class OrderTransferDemo {
     public static void main(String[] args) throws Exception {
         // 1. 加载并校验配置（Schema 校验失败即 fail-fast）
         TransferSpec spec;
-        try (InputStream in = OrderTransferDemo.class
-                .getResourceAsStream("/specs/order-transfer.yaml")) {
+        try (InputStream in = openResource("/specs/order-transfer.yaml")) {
             spec = new TransferSpecValidator()
                     .validateAndLoad(in, "specs/order-transfer.yaml");
         }
 
         // 2. 初始化引擎并执行转换
-        String sourceJson = new String(OrderTransferDemo.class
-                .getResourceAsStream("/samples/order-001.json").readAllBytes(), StandardCharsets.UTF_8);
+        String sourceJson = readResource("/samples/order-001.json");
         var result = new TransferEngine(spec).transfer(sourceJson);
 
         // 3. 输出（对照 expected/order-001.json）
@@ -37,6 +36,20 @@ public final class OrderTransferDemo {
         // 4.（可选）YAML 视图：spec 本身即 YAML，输出亦可用 YAML mapper 序列化
         System.out.println(YAMLMapper.builder().build()
                 .writerWithDefaultPrettyPrinter().writeValueAsString(result));
+    }
+
+    private static InputStream openResource(String path) {
+        InputStream in = OrderTransferDemo.class.getResourceAsStream(path);
+        if (in == null) {
+            throw new IllegalArgumentException("Resource not found: " + path);
+        }
+        return in;
+    }
+
+    private static String readResource(String path) throws IOException {
+        try (InputStream in = openResource(path)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private OrderTransferDemo() {

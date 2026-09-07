@@ -58,6 +58,8 @@ public class TransferEngine {
     private final FlatMapProcessor flatProcessor = new FlatMapProcessor();
     private final FuncRegistry funcRegistry;
     private final ExpressionEvaluator exprEvaluator;
+    /** spec 是否含 when 条件分支（决定 transfer 期是否预构建源嵌套视图，review P1 性能项） */
+    private final boolean hasConditionalRules;
 
     public TransferEngine(TransferSpec spec) {
         this(spec, Map.of(), new JexlExpressionEvaluator());
@@ -71,16 +73,14 @@ public class TransferEngine {
                           Map<String, TransformFunction> extraFunctions,
                           ExpressionEvaluator exprEvaluator) {
         this.spec = Objects.requireNonNull(spec, "spec must not be null");
-        this.exprEvaluator = exprEvaluator;
+        this.exprEvaluator = Objects.requireNonNull(exprEvaluator, "exprEvaluator must not be null");
         this.funcRegistry = new FuncRegistry();
         extraFunctions.forEach(funcRegistry::register);
         validateUnsupportedFeatures(spec);
         validateRules(spec);
         validateValidations(spec);
-    }
-
-    public FuncRegistry getFuncRegistry() {
-        return funcRegistry;
+        this.hasConditionalRules = spec.getRules().stream()
+                .anyMatch(rule -> rule.getWhen() != null && !rule.getWhen().isEmpty());
     }
 
     /** JSON 字符串输入（readTree 复用 flatProcessor 的 BigDecimal mapper，精度语义贯穿） */
@@ -109,7 +109,9 @@ public class TransferEngine {
         }
         Map<String, Object> flatTarget = new LinkedHashMap<>();
 
-        // Phase 2: 规则映射
+        // Phase 2: 规则映射（含 when 条件的 spec 预构建一次源嵌套视图，供逐元素条件求值复用）
+        Map<String, Object> sourceView =
+                hasConditionalRules ? flatProcessor.unflattenToMap(flatSource, separator) : null;
         List<MappingRule> rules = spec.getRules();
         for (int ruleIndex = 0; ruleIndex < rules.size(); ruleIndex++) {
             MappingRule rule = rules.get(ruleIndex);
@@ -125,7 +127,7 @@ public class TransferEngine {
                 }
                 // 多级 [*] 按出现顺序逐段对位（设计文档 §6.1）
                 String targetPath = alignWildcards(rule.getTo(), match.getKey(), rule.getFrom(), separator);
-                value = applyTransforms(rule, ruleIndex, value, flatSource);
+                value = applyTransforms(rule, ruleIndex, value, flatSource, sourceView);
                 flatTarget.put(targetPath, value);
             }
         }
@@ -173,9 +175,9 @@ public class TransferEngine {
 
     /** 变换入口：when 条件映射优先（与 transform 互斥），否则链式 transform */
     private Object applyTransforms(MappingRule rule, int ruleIndex, Object value,
-                                   Map<String, Object> flatSource) {
+                                   Map<String, Object> flatSource, Map<String, Object> sourceView) {
         if (rule.getWhen() != null && !rule.getWhen().isEmpty()) {
-            return applyConditions(rule, ruleIndex, rule.getWhen(), value, flatSource);
+            return applyConditions(rule, ruleIndex, rule.getWhen(), value, flatSource, sourceView);
         }
         if (rule.getTransform() == null || rule.getTransform().isBlank()) {
             return value;
@@ -185,13 +187,14 @@ public class TransferEngine {
 
     /** 条件映射（设计文档 §6.3）：condition 可引用源 FlatMap 顶层键；落空走 otherwise，无 otherwise 保留原值 */
     private Object applyConditions(MappingRule rule, int ruleIndex, List<ConditionMapping> when,
-                                   Object value, Map<String, Object> flatSource) {
+                                   Object value, Map<String, Object> flatSource,
+                                   Map<String, Object> sourceView) {
         for (ConditionMapping branch : when) {
             if (branch.getCondition() != null) {
                 boolean matched;
                 try {
                     matched = Boolean.TRUE.equals(
-                            exprEvaluator.evaluate(branch.getCondition(), flatSource));
+                            exprEvaluator.evaluate(branch.getCondition(), flatSource, sourceView));
                 } catch (RuntimeException e) {
                     throw new TransformException("when condition evaluation failed: " + e.getMessage(),
                             ruleIndex, rule.getFrom(), rule.getTo(), branch.getCondition(), value, e);
@@ -289,6 +292,14 @@ public class TransferEngine {
             throw new TransferAssemblyException(
                     "rewrites (path rewrite) is not yet supported (spec: " + spec.getName() + ")");
         }
+        // review P1：表达式侧（computed/when/condition 的 JEXL 求值）当前按 "." 拍还原嵌套视图，
+        // 自定义 separator 下会静默失配（校验假阴性）——fail-fast 而非静默，对齐 sources/rewrites 哲学
+        if (!".".equals(spec.optionsOrNew().getSeparator())) {
+            throw new TransferAssemblyException(
+                    "custom separator '" + spec.optionsOrNew().getSeparator()
+                            + "' is not yet supported (expression evaluation assumes '.') (spec: "
+                            + spec.getName() + ")");
+        }
     }
 
     private static void validateRules(TransferSpec spec) {
@@ -352,14 +363,14 @@ public class TransferEngine {
     // validations（评审 6.x）：对目标 FlatMap 的数据值校验，defaults 后、Unflatten 前
     // =====================================================================
 
-    /** 内置断言谓词（评审 6.2）；数值比较统一 BigDecimal */
+    /** 内置断言谓词（评审 6.2）；数值比较统一 BigDecimal，null 值判定为断言失败（review P1） */
     private static final Map<String, AssertPredicate> ASSERT_PREDICATES = Map.of(
             "notNull", (value, args) -> value != null,
             "notBlank", (value, args) -> value != null && !String.valueOf(value).isBlank(),
-            "gt", (value, args) -> decimal(value).compareTo(decimal(args.get(0))) > 0,
-            "gte", (value, args) -> decimal(value).compareTo(decimal(args.get(0))) >= 0,
-            "lt", (value, args) -> decimal(value).compareTo(decimal(args.get(0))) < 0,
-            "lte", (value, args) -> decimal(value).compareTo(decimal(args.get(0))) <= 0,
+            "gt", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) > 0,
+            "gte", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) >= 0,
+            "lt", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) < 0,
+            "lte", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) <= 0,
             "eq", (value, args) -> equalsLoosely(value, args.get(0)),
             "neq", (value, args) -> !equalsLoosely(value, args.get(0)),
             "regex", (value, args) -> value != null && Pattern.matches(args.get(0), String.valueOf(value)));
@@ -449,9 +460,12 @@ public class TransferEngine {
         for (ValidationRule validation : spec.validationsOrEmpty()) {
             if (validation.getRules() != null && !validation.getRules().isEmpty()) {
                 collectAssertionFailures(validation, flatTarget, failures, failFast);
-            } else {
-                collectConditionFailures(validation, flatTarget, failures, failFast);
+                if (failFast && !failures.isEmpty()) {
+                    return failures;
+                }
+                continue;
             }
+            collectConditionFailures(validation, flatTarget, failures, failFast);
             if (failFast && !failures.isEmpty()) {
                 return failures;
             }

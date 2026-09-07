@@ -1,17 +1,15 @@
 package com.example.datatransfer.demo;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.example.datatransfer.test.AssertContext;
 import com.example.datatransfer.test.TransferAssert;
-import com.example.datatransfer.test.ext.TransferSpecExtension;
 import com.example.datatransfer.test.ext.TransferSpecTest;
 
 /** 契约测试示范（设计文档 §10.8）：注解驱动 + 手动链式断言两种风格。 */
-@ExtendWith(TransferSpecExtension.class)
 class OrderTransferContractTest {
 
+    // 类上无需 @ExtendWith：@TransferSpecTest 元标注自带扩展注册（review P1）
     @TransferSpecTest(
             spec = "specs/order-transfer.yaml",
             fixture = "samples/order-001.json",

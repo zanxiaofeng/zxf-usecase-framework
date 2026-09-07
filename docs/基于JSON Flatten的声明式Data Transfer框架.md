@@ -1,6 +1,6 @@
 # 基于 JSON Flatten 的声明式 Data Transfer 框架 — 设计文档
 
-> **状态**：设计稿 v0.3（2026-09-06）——v0.2 完成结构重写与三模块/Jackson 3 基线裁定；v0.3 完成依赖选型收口（json-flattener 0.18.2、json-schema-validator 3.0.6，均已确认原生支持 Jackson 3）
+> **状态**：v1.2（2026-09-07）——v0.3 完成设计定稿（依赖选型收口：json-flattener 0.18.2、json-schema-validator 3.0.6，原生支持 Jackson 3）；v1.0 三模块落地 + usecase 集成（附录 C）；v1.1 外部评审 47 条处置 + 异常体系 + validations（附录 D）；v1.2 代码 review 修复批次（附录 D.3）
 >
 > **基线**：Java 21 · Jackson 3（`tools.jackson.*`，全工程统一版本线）· Spring Boot 4（可选集成，非必需）
 >
@@ -2660,7 +2660,7 @@ data-transfer-sdk/                               # 聚合根（父 POM）
 
 ## 附录 C：落地注记（v1.0 实现，2026-09-07）
 
-三模块已在本工程落地（groupId 统一 `com.example`，与 usecase-framework 六模块聚合；设计文档中的 `com.example.datatransfer` groupId 为独立发布形态，仓库内不适用），并以**内置 `dataTransfer` step 类型**集成进 usecase-framework-core（config：`spec`（classpath 引用）/`source`（SpEL，缺省 `#payload`）/`as`（旁路键，缺省覆盖 payload）；装配期 Schema 校验 fail-fast；默认 source 时覆写 `dataflow()` 声明键级血缘）。`mvn clean test` 全量绿：core 38 + test 14 + demo 6 + usecase 集成 10 + demo e2e。
+三模块已在本工程落地（groupId 统一 `com.example`，与 usecase-framework 六模块聚合；设计文档中的 `com.example.datatransfer` groupId 为独立发布形态，仓库内不适用），并以**内置 `dataTransfer` step 类型**集成进 usecase-framework-core（config：`spec`（classpath 引用）/`source`（SpEL，缺省 `#payload`）/`as`（旁路键，缺省覆盖 payload）；装配期 Schema 校验 fail-fast；默认 source 时覆写 `dataflow()` 声明键级血缘）。`mvn clean test` 全量绿（v1.2 现值）：data-transfer-core 58 + data-transfer-test 22 + data-transfer-demo 7 + usecase-framework-core 207 + usecase-framework-test 14 + usecase-framework-demo 22，合计 330。
 
 ### C.1 实现中实证并修正的文档表述
 
@@ -2722,3 +2722,28 @@ usecase `errorMappings` 把数据类错误映射 4xx。② validations 校验段
 - **7.1 passthrough**：整棵子树原样搬运（不进拍平管道），大 JSON 少字段场景的逃逸阀
 - **2.8 标量→数组广播**：维持第一版禁止（与索引对齐语义正交）；广播需求收集后再放宽 Schema
 - **8.1/8.2 可观测性**：审计日志结构化（OpenTelemetry 语义约定）、指标收集时机与去重策略——随指标埋点排期
+
+### D.3 代码 review 修复批次（2026-09-07，v1.1 → v1.2，330/330 全绿）
+
+实现代码的两轮 agent review（core：P0×1 + P1×6 + P2×12；test/demo：P1×6 + P2×13）合并处置。
+
+**P0（数据正确性，已修）**：聚合双路径按位置配对——`nullPolicy: skip` 下两操作数索引集合不同（如左 `[0],[2]`、右 `[0],[1]`）时静默错位相乘（实测 100×2 + 7×3 = 221 仍"合法"返回）。改为**索引元组配对**：对展开键取全部 `[*]` 位索引组为 key，双操作数 keySet 不一致即抛 `TransferException`（含两侧索引集合与表达式文本），宁可失败不错数据。
+
+**P1（已修）**：
+
+| 修复 | 语义 |
+|---|---|
+| 数值断言 null 防卫 | `gt/gte/lt/lte` 遇 null 值判为校验失败（记 ValidationFailure），不再裸抛 NumberFormatException |
+| 自定义 separator fail-fast | 非 `.` 分隔符构造期拒绝（computed/when/condition 的表达式按 `.` 拍还原，自定义分隔符会静默失配） |
+| 条件视图复用 | 含条件规则时 transfer 全程复用一次 unflatten 嵌套视图（原先 when/condition 每条规则重复还原） |
+| `@Validated` 配置校验 | `DataTransferProperties.specs[].location` 加 `@NotBlank`，非法配置启动期 fail-fast |
+| 注解自带扩展 | `@TransferSpecTest` 元标注 `@ExtendWith(TransferSpecExtension.class)`——测试类无需显式注册（漏注册 = 断言静默跳过 = 空方法体假绿）；JUnit 6 `@ExtendWith` 的 TYPE target 实证兼容注解类型声明，TestKit 驱动失败样本守护 |
+| ignorePaths 口径统一 | `AssertContext`（execute() 后链式断言）构造期即应用 ignorePaths 排除，与 matchesExpected 主流程同口径 |
+| 大整数比较 | DiffEngine 数值比较改 BigDecimal `compareTo`（原先 double 中转，> 2^53 大整数舍入漏检）；`looseEquals` 提为包级静态，`pathValueEquals`/`pathValueIn` 复用同一宽松口径 |
+| allPathValues 包装 | catch 扩为 `AssertionError \| RuntimeException`——AssertJ/JUnit 断言抛 AssertionError 时包装为含失败值上下文的 AssertionError（保留 cause），不再裸抛 |
+
+**P2（择优修复）**：BatchAssert 空 case 列表 `runAll()` 抛 IllegalStateException（0 case 假绿）+ `registerFunction` 透传；DiffEntry/DiffResult/BatchAssert.TestCase record 化（`List.copyOf` 不可变）；demo 主类 sample 加载 try-with-resources + `readResource` 复用（消同文件双标）+ 资源 null 防卫；data-transfer-test 测试依赖瘦身（spring-boot-starter-test → junit-jupiter + assertj-core + engine-test-kit，不拉 Spring context）；删除 `TransferEngine.getFuncRegistry()` 公开逃逸口。
+
+**裁定两项**：① `TransferException` 体系**暂不加 `CODE` 常量**——库定位按类型 catch 即可（usecase `errorMappings` 按简单类名映射已够），出现对外错误码需求时再引入；② **空数组 × missingPolicy=ERROR 维持现状语义**：`items[*]` 展开为空集 = 规则未命中任何键 = 按 missingPolicy 处置（与"键不存在"同路径），不视为特殊错误——已在此固化，不另行区分"数组存在但为空"。
+
+**P2 未修项留档**（低收益/待规模信号）：TransferSpec 深拷贝防御、FlatMap 预估容量、regex Pattern 缓存化、SpecificationVersion 升 DRAFT_2020_12 显式声明（当前默认方言一致）、diff 输出按路径排序、BatchAssert 支持 PARTIAL mode 参数、demo 可执行 jar shade。
