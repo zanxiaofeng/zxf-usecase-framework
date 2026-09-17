@@ -96,4 +96,26 @@ class DataTransferStepTest {
         assertThat(customSource.dataflow().unknown()).isTrue();
     }
 
+    @Test
+    void dateTimeFunctionsAndDateAssertions_assemblyAndTransferSmoke() {
+        // 日期函数族 + 日期断言经 usecase 装配路径（Schema 校验 + 引擎构造 fail-fast）无回归
+        Step step = factory.create(new StepDefinition("dateNorm", "dataTransfer", null,
+                Map.of("spec", "transfers/date-functions.yaml")));
+
+        StepContext context = contextWithPayload(Map.of(
+                "orderId", "ORD-1",
+                "orderDate", "15-01-2026",
+                "createdAt", "2026/01/15 10:30:00",
+                "createdAtEpoch", 1768473000000L));
+        step.execute(context);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) context.getPayload();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> order = (Map<String, Object>) payload.get("order");
+        assertThat(order.get("orderDate")).isEqualTo("2026-01-15");
+        assertThat(order.get("createdAt")).isEqualTo("2026-01-15T10:30:00");
+        assertThat(order.get("eventTime")).isEqualTo("2026-01-15T18:30:00+08:00");
+    }
+
 }

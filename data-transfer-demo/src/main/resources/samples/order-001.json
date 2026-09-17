@@ -12,5 +12,8 @@
     {"sku": "A001", "price": 100, "qty": 2},
     {"sku": "B002", "price": 50, "qty": 3}
   ],
-  "status": "PAID"
+  "status": "PAID",
+  "orderDate": "15-01-2026",
+  "createdAt": "2026/01/15 10:30:00",
+  "createdAtEpoch": 1768473000000
 }

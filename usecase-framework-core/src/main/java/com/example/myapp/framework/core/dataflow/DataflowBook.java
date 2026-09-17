@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.util.Assert;
 
 /**
@@ -25,7 +26,7 @@ public final class DataflowBook {
     }
 
     /** 某用例某步的声明；未登记（不在本 book 覆盖范围）返回 null */
-    public Dataflow of(String useCaseId, String stepName) {
+    public @Nullable Dataflow of(String useCaseId, String stepName) {
         Map<String, Dataflow> steps = declarations.get(useCaseId);
         return steps == null ? null : steps.get(stepName);
     }

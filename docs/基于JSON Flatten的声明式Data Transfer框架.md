@@ -168,7 +168,7 @@ transform: "trim | lower | default('N/A')"
 |---|---|---|
 | 字符串 | `upper`, `lower`, `trim`, `replace(old, new)`, `substring(start, end)` | 基础文本处理 |
 | 数值 | `multiply(n)`, `add(n)`, `round(precision)`, `abs` | 算术变换（生产实现建议 BigDecimal，见 §8.5 注） |
-| 日期 | `dateFormat(fromFmt, toFmt)`, `epochToIso`, `now` | 时间格式转换 |
+| 日期 | `dateFormat(fromFmt, toFmt)`, `epochToIso`, `epochToIso(zone)`, `toIsoDate(fmt)`, `toIsoDateTime(fmt)`, `now`, `now(zone)` | 时间格式转换（**已实现 2026-09-16**，见 §D.4；输出均为 String，时区默认 UTC + 可选 IANA 时区参数） |
 | 类型 | `toString`, `toNumber`, `toBoolean` | 类型强转 |
 | 逻辑 | `default(val)`, `coalesce(path1, path2, ...)`, `when(cond, then, else)` | 条件与兜底 |
 | 聚合 | `sum`, `avg`, `count`, `min`, `max`, `concat(sep)` | 配合通配符使用 |
@@ -2681,7 +2681,7 @@ data-transfer-sdk/                               # 聚合根（父 POM）
 
 ### C.3 第一版裁剪清单（装配期/构造期 fail-fast 拒绝，不静默忽略）
 
-`sources`（多源合并）与 `rewrites`（路径改写）保留模型字段但引擎构造期抛「not yet supported」；未实现：批量模式 `transfer_batch`、dry-run、`fn:` 前缀函数语法（自定义函数经构造器 `extraFunctions` 注册后直接以函数名引用）、指标埋点（ObservabilityConfig 仅模型承载）、§3.2 函数表中的其余内置函数（已实现 trim/lower/upper/replace/multiply/round/default，其余经 FuncRegistry.register 扩展）。
+`sources`（多源合并）与 `rewrites`（路径改写）保留模型字段但引擎构造期抛「not yet supported」；未实现：批量模式 `transfer_batch`、dry-run、`fn:` 前缀函数语法（自定义函数经构造器 `extraFunctions` 注册后直接以函数名引用）、指标埋点（ObservabilityConfig 仅模型承载）、§3.2 函数表中的其余内置函数（已实现 trim/lower/upper/replace/multiply/round/default + 日期函数族 dateFormat/epochToIso/toIsoDate/toIsoDateTime/now（2026-09-16，§D.4），其余经 FuncRegistry.register 扩展）。
 
 ---
 
@@ -2712,9 +2712,9 @@ usecase `errorMappings` 把数据类错误映射 4xx。② validations 校验段
 - **1.4 rewrites 时机**：Phase 1（拍平后）与 Phase 2（规则匹配前）之间，按声明顺序串行应用于源 FlatMap 所有键
 - **1.6/9.2 多源约束**：各源拍平后以 `alias.` 根前缀合并；规则 `from` 必须以某 alias 开头（否则按 missingPolicy 处置）；装配期 alias 唯一性校验
 - **1.3 computed 依赖**：按声明顺序执行（当前实现已隐式支持前向引用——flatTarget 逐步更新），补拓扑循环检测；后向引用以运行期求值失败暴露
-- **2.5 日期函数**：默认 UTC + 可选时区参数（函数族实现时执行）
+- **2.5 日期函数**：默认 UTC + 可选时区参数（**已落地 2026-09-16**，§D.4）
 - **2.9 coalesce**：Phase 2 执行，仅引用源 FlatMap 路径
-- **2.10 类型转换函数族**：`toEnum(className)` / `toLocalDate(fmt)` / `toLocalDateTime(fmt)` / `toBigDecimal`（金额场景替代 toNumber）；不引入独立 ConversionHandler（保持 TransformFunction 单一扩展点，接口文档补类型转换专项示例）
+- **2.10 类型转换函数族**：`toEnum(className)` / `toIsoDate(fmt)` / `toIsoDateTime(fmt)` / `toBigDecimal`（金额场景替代 toNumber）；不引入独立 ConversionHandler（保持 TransformFunction 单一扩展点，接口文档补类型转换专项示例）。**toIsoDate/toIsoDateTime 已落地 2026-09-16**（§D.4）；`toEnum`/`toBigDecimal` 仍未实现
 - **3.1/9.3 数组稀疏**：索引忠实传递（`items[1]` → `lineItems[1]`，空洞由 Unflattener 垫槽位为 null——当前实现即此行为，文档固化）；压缩重排经显式变换函数
 - **2.3 otherwise 字面量**：可加 `const(v)` 内置函数实现无条件字面输出（default 仅兜 null 的语义不变）
 - **2.4 函数参数编译期校验**：内置函数数值参数装配期正则校验（`multiply("abc")` 提前拦截）
@@ -2747,3 +2747,38 @@ usecase `errorMappings` 把数据类错误映射 4xx。② validations 校验段
 **裁定两项**：① `TransferException` 体系**暂不加 `CODE` 常量**——库定位按类型 catch 即可（usecase `errorMappings` 按简单类名映射已够），出现对外错误码需求时再引入；② **空数组 × missingPolicy=ERROR 维持现状语义**：`items[*]` 展开为空集 = 规则未命中任何键 = 按 missingPolicy 处置（与"键不存在"同路径），不视为特殊错误——已在此固化，不另行区分"数组存在但为空"。
 
 **P2 未修项留档**（低收益/待规模信号）：TransferSpec 深拷贝防御、FlatMap 预估容量、regex Pattern 缓存化、SpecificationVersion 升 DRAFT_2020_12 显式声明（当前默认方言一致）、diff 输出按路径排序、BatchAssert 支持 PARTIAL mode 参数、demo 可执行 jar shade。
+
+### D.4 日期时间批次（2026-09-16，D.2-2.5 全量 + 2.10 部分落地；2026-09-17 review 修复，369/369 全绿）
+
+**transform 日期函数族**（实现集中于 `DateTimeFunctions`，FuncRegistry 仅薄转发）：
+
+| 函数 | 语义 |
+|---|---|
+| `dateFormat(fromFmt, toFmt)` | 字符串日期在两种 pattern 间重排（TemporalAccessor 透传）；目标 pattern 引用源值未解析出的字段（源仅日期、目标含 HH:mm）即报错 |
+| `epochToIso` / `epochToIso(zone)` | epoch 毫秒 → ISO-8601；无参 `Instant` UTC 形态（变长精度），带参 `OffsetDateTime` 形态；`longValueExact()` 防小数静默截断 |
+| `toIsoDate(fmt)` | 按 fmt 解析并强校验「完整日期」，输出 ISO `yyyy-MM-dd` |
+| `toIsoDateTime(fmt)` | 按 fmt 解析，输出固定 `yyyy-MM-dd'T'HH:mm:ss`（亚秒截断） |
+| `now` / `now(zone)` | 注入 Clock 的当前时间，输出形态同 epochToIso |
+
+**关键裁定**：
+
+- **解析精度（2026-09-17 review 裁定）**：pattern 解析走 JDK 默认 SMART 模式——非法日值（`31/02/2026` → `2026-02-28`）**静默归一到月末而非报错**（字段完整性缺失仍报错）。值有效性校验不在变换函数职责内；若需严格校验，上游数据入口负责。锚定测试 `toIsoDate_invalidDateNormalizedBySmartResolver`。
+- **命名裁定（2026-09-17）**：2.10 提案原名 `toLocalDate(fmt)` / `toLocalDateTime(fmt)` 落地即更名 `toIsoDate` / `toIsoDateTime`——`LocalDate/LocalDateTime` 是 java.time 内部类型名，框架为隐式类型设计（配置值均为字符串），命名应表达**形态转换**（任意格式 → 固定 ISO 形态）而非「到一个不存在的类型」的实现细节；与 `epochToIso` 构成 `*ToIso*` 家族词根（输出 ISO 形态）。
+- **Clock 注入**：`FuncRegistry` 实例持 Clock（默认 `Clock.systemUTC()` 行为不变），`now` 由实例构造器注册；`TransferEngine` 新增第 4 参构造器（Clock），现有 3 个委托。否决经 `context` 传递（context 语义是源 FlatMap，塞 Clock 与源字段命名冲突）；否决引擎动态注册（内置表劈两处）。`TransferAssert.withClock(Clock)` 供契约级覆盖真实内置 now（`registerFunction("now", …)` 是同名遮蔽路径，两者语义不同）。
+- **输出用 `OffsetDateTime` 而非 `ZonedDateTime`**：后者 toString 追加 `[Asia/Shanghai]` 后缀非纯 ISO offset 形态；且带参路径用 `ISO_OFFSET_DATE_TIME.format()` 而非 `toString()`——toString 省略零秒段（`18:30+08:00`），formatter 的 optional 秒段在 format 时恒输出（`18:30:00+08:00`）。`toIsoDateTime` 同理须显式 pattern（`LocalDateTime.toString()` 省略零秒）。
+- **`now` 受 null 短路约束**（评审 2.1 语义不变）：源值 null 时 now 被跳过——须挂在必然存在的源字段上；「无条件时间戳」需求待真实场景出现再议。
+- **异常策略**：函数内统一抛 `IllegalArgumentException`（解析失败/字段缺失/缺参/非法时区/小数 epoch），applyChain 包装为 `TransformException`（携带 ruleIndex/from/to 与当前值）——与 `replace` 缺参、`round` 非数值现状同级，不新造异常类型。**函数参数不做构造期校验**（对齐 D.2-2.4 独立路线图项边界；pattern 合法性与 locale 相关）。
+- **locale pattern 提示**：`a`（上下午）/`MMM`/`EEE` 等文本 pattern 走平台默认 Locale，建议仅用数值/ISO 类 pattern；`uuuu`/`yyyy` 的 STRICT/SMART 差异照 JDK 默认（SMART）。
+- **YAML 时间戳提示**：YAML 有 timestamp 标量隐式类型化，spec/samples 中的日期时间值须加引号（demo 三件套为 JSON 无此问题）。
+
+**validations 日期断言**（与 gt/gte/lt/lte 结构同构的 4 个对称断言）：`dateBefore(<)` / `dateAfter(>)` / `dateNotBefore(≥)` / `dateNotAfter(≤)`。值与参数统一经引擎私有 `parseIsoDateTime`（含 `T` → `LocalDateTime`，否则 `LocalDate.atStartOfDay()`——日期按当日零点参与比较，LocalDate 值与 LocalDateTime 参数可混比；唯一消费者是引擎，不进 `DateTimeFunctions` 公共面）。
+
+- **null 与不可解析值均判失败**（记 ValidationFailure，不裸抛）——比数值断言的非数值裸抛 NFE 更进一步（D.3 P1 只防卫了 null），差异在此固化。
+- **带 `'Z'`/offset 的 ISO 字符串不支持**（`LocalDateTime.parse` 天然拒绝 → 判失败）：断言是「目标形态合同」校验，静默折算时区会掩盖上游未归一——须先经 `dateFormat`/`toIsoDateTime` 归一为无时区形态。
+- **构造期参数预校验**（`DATE_ASSERTIONS` 集合 + `validateAssertionSyntax` 试解析，抛 `TransferAssemblyException`）：缺参 / 非 ISO（`'2026/01/15'`、`'abc'`）/ `Z` 后缀均在装配期拦截——与函数参数「运行期才炸」的边界对比见上。
+
+**D.4.1 review 修复批次（2026-09-17，独立 agent review：P0×0 / P1×3 / P2×7，用户裁定处置）**：
+
+- **P1 修复**：① `DateTimeFunctions` 类头重复 Javadoc（编辑残留）；② SMART 静默归一明示（见上「解析精度」裁定 + 锚定测试）；③ IDE 生成文件退库（30 个 `.factorypath`/`.settings` 含 usecase 侧存量，`git rm --cached` + `.gitignore` 补不锚定 `.settings/` 与 `.factorypath`——usecase 侧 JDT prefs 正是「坏 class 污染 target」坑的源头之一）。
+- **P2 修复**：`parseIsoDateTime` 改「先 `LocalDateTime.parse` 失败回退 `LocalDate.parse`」（修复 `contains("T")` 启发式对小写 `t` 合法 ISO 串的误拒）；`DateTimeFunctions` 异常消息统一英文（跟随库内基调）；`epochToIso`/`now` 参数个数校验前置到 null 短路之前（`now` 签名统一为 value 首参、null 防卫内聚）；`toIsoDate`/`toIsoDateTime` 抽取 `parseWithPattern`（含 extractor，字段缺失消息不回退为裸 `DateTimeException`）；新增 5 个锚定测试（SMART 归一 / offset-id 时区 `GMT+08` / 多参拒绝 / offset 值判失败 / `withClock`+`registerFunction` 组合遮蔽胜出）。
+- **留档未修**（并入 D.3 P2 清单）：`DateTimeFormatter.ofPattern` 每值重编译（热路径，可与 D.3 的 regex Pattern 缓存化合并处理）；dateFormat 的 locale pattern（`a`/`MMM`/`EEE`）行为不测（Javadoc 已提示平台 Locale 依赖）。

@@ -195,4 +195,114 @@ class ValidationTest {
                 .validations(List.of(validations))
                 .build();
     }
+
+    // ---- 日期断言（设计文档 §3.2「日期」行批次：dateBefore/dateAfter/dateNotBefore/dateNotAfter）----
+
+    @Test
+    void dateAssertions_passOnIsoValues() {
+        // LocalDate 值与 LocalDateTime 参数混比：日期按当日零点参与比较
+        TransferSpec spec = dateSpec(
+                validation("out.orderDate", "dateAfter('2026-01-01')", "订单日期必须晚于2026-01-01"),
+                validation("out.orderDate", "dateNotAfter('2026-12-31')", "订单日期不能晚于2026-12-31"),
+                validation("out.createdAt", "dateBefore('2026-01-16')", "创建时间必须早于1月16日"),
+                validation("out.createdAt", "dateNotBefore('2026-01-15T00:00:00')", "创建时间不能早于1月15日零点"));
+
+        assertThatCode(() -> new TransferEngine(spec)
+                .transfer("{\"orderDate\": \"2026-01-15\", \"createdAt\": \"2026-01-15T10:30:00\"}"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void dateNotAfter_inclusiveBoundary_passes() {
+        // 相等边界 = 通过（≤ 语义，与 lte 同构）
+        TransferSpec spec = dateSpec(
+                validation("out.orderDate", "dateNotAfter('2026-01-15')", "订单日期不能晚于2026-01-15"));
+
+        assertThatCode(() -> new TransferEngine(spec).transfer("{\"orderDate\": \"2026-01-15\"}"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void dateBefore_failsWithPathMessageAndValue() {
+        TransferSpec spec = dateSpec(
+                validation("out.orderDate", "dateBefore('2026-01-15')", "订单日期必须早于2026-01-15"));
+
+        assertThatThrownBy(() -> new TransferEngine(spec).transfer("{\"orderDate\": \"2026-01-20\"}"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("out.orderDate")
+                .hasMessageContaining("订单日期必须早于2026-01-15")
+                .hasMessageContaining("value: 2026-01-20");
+    }
+
+    @Test
+    void dateAssertions_nullAndUnparseable_failAsRecordedFailures() {
+        // null 值（review P1 数值断言先例）与不可解析值均判失败（记 ValidationFailure），不裸抛
+        TransferOptions collect = new TransferOptions();
+        collect.setValidationMode(ValidationMode.COLLECT);
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("date-fail").options(collect)
+                .rules(List.of(
+                        MappingRule.builder().from("orderDate").to("out.orderDate").build(),
+                        MappingRule.builder().from("createdAt").to("out.createdAt").build()))
+                .validations(List.of(
+                        validation("out.orderDate", "dateAfter('2026-01-01')", "订单日期必须晚于2026-01-01"),
+                        validation("out.createdAt", "dateNotAfter('2026-12-31')", "创建时间不能晚于2026-12-31")))
+                .build();
+
+        assertThatThrownBy(() -> new TransferEngine(spec)
+                .transfer("{\"orderDate\": null, \"createdAt\": \"not-a-date\"}"))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(e -> assertThat(((ValidationException) e).getFailures()).hasSize(2))
+                .hasMessageContaining("not-a-date");
+    }
+
+    @Test
+    void dateAssertions_offsetFormValue_recordedAsFailure() {
+        // 带 offset 的值不支持（'Z'/+08:00 形态须先经转换函数归一）——D.4 裁定锚定
+        TransferSpec spec = dateSpec(
+                validation("out.createdAt", "dateAfter('2026-01-01')", "创建时间必须晚于2026-01-01"));
+
+        assertThatThrownBy(() -> new TransferEngine(spec)
+                .transfer("{\"createdAt\": \"2026-01-15T10:30:00+08:00\"}"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("创建时间必须晚于2026-01-01");
+    }
+
+    @Test
+    void constructor_rejectsDateAssertionBadArguments() {
+        // 缺参（PARAMETRIZED 通用校验）
+        assertThatThrownBy(() -> new TransferEngine(dateSpec(
+                validation("out.orderDate", "dateAfter()", "m"))))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("requires an argument");
+
+        // 非 ISO 日期参数
+        assertThatThrownBy(() -> new TransferEngine(dateSpec(
+                validation("out.orderDate", "dateAfter('2026/01/15')", "m"))))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("ISO-8601 date or date-time argument");
+
+        // 'Z'/offset 形态明确不支持（须先经转换函数归一为无时区形态）
+        assertThatThrownBy(() -> new TransferEngine(dateSpec(
+                validation("out.orderDate", "dateBefore('2026-01-15T10:30:00Z')", "m"))))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("ISO-8601 date or date-time argument");
+    }
+
+    /** orderDate/createdAt 双字段映射的日期断言公共 spec */
+    private static TransferSpec dateSpec(ValidationRule... validations) {
+        return TransferSpec.builder()
+                .version("1.0").name("date-assert")
+                .rules(List.of(
+                        MappingRule.builder().from("orderDate").to("out.orderDate").build(),
+                        MappingRule.builder().from("createdAt").to("out.createdAt").build()))
+                .validations(List.of(validations))
+                .build();
+    }
+
+    private static ValidationRule validation(String path, String assertExpr, String assertionMessage) {
+        return ValidationRule.builder().path(path)
+                .rules(List.of(Assertion.builder().assertExpr(assertExpr).message(assertionMessage).build()))
+                .build();
+    }
 }

@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,6 +16,7 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 import com.example.datatransfer.core.TransferEngine;
+import com.example.datatransfer.core.expression.JexlExpressionEvaluator;
 import com.example.datatransfer.core.flatten.FlatMapProcessor;
 import com.example.datatransfer.core.spec.TransferSpec;
 import com.example.datatransfer.core.transform.TransformFunction;
@@ -38,6 +40,7 @@ public class TransferAssert {
     private final List<String> ignorePaths = new ArrayList<>();
     private final Map<String, TransformFunction> customFunctions = new HashMap<>();
     private CompareMode compareMode = CompareMode.STRICT;
+    private Clock clock = Clock.systemUTC();
 
     private final FlatMapProcessor flatProcessor = new FlatMapProcessor();
     private final JsonMapper mapper = JsonMapper.builder().build();
@@ -87,6 +90,16 @@ public class TransferAssert {
 
     public TransferAssert registerFunction(String name, TransformFunction function) {
         this.customFunctions.put(name, function);
+        return this;
+    }
+
+    /**
+     * 注入固定 Clock 使内置 {@code now} 变换在契约测试中确定性（默认 systemUTC 行为不变）。
+     * 与 {@link #registerFunction(String, TransformFunction)} 的区别：此处测试的是真实内置
+     * now，后者是同名遮蔽。
+     */
+    public TransferAssert withClock(Clock clock) {
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
         return this;
     }
 
@@ -142,7 +155,7 @@ public class TransferAssert {
     }
 
     private TransferEngine buildEngine() {
-        return new TransferEngine(spec, customFunctions);
+        return new TransferEngine(spec, customFunctions, new JexlExpressionEvaluator(), clock);
     }
 
     /** 动态路径排除（主流程 diff 与 {@link AssertContext} 链式断言共用的同一口径） */

@@ -34,6 +34,18 @@ rules:
     to: "crmOrder.state"
     transform: "lower"
 
+  - from: "orderDate"
+    to: "crmOrder.orderDate"
+    transform: "dateFormat('dd-MM-yyyy', 'yyyy-MM-dd')"
+
+  - from: "createdAt"
+    to: "crmOrder.createdAt"
+    transform: "toIsoDateTime('yyyy/MM/dd HH:mm:ss')"
+
+  - from: "createdAtEpoch"
+    to: "crmOrder.eventTime"
+    transform: "epochToIso('Asia/Shanghai')"
+
 computed:
   - to: "crmOrder.totalAmount"
     expr: "sum(crmOrder.lines[*].unitPrice * crmOrder.lines[*].quantity)"
@@ -56,3 +68,9 @@ validations:
     rules:
       - assert: "regex('^[\\w.-]+@[\\w.-]+\\.\\w+$')"
         message: "邮箱格式非法"
+  - path: "crmOrder.createdAt"
+    rules:
+      - assert: "dateAfter('2026-01-01')"
+        message: "创建时间必须晚于2026-01-01"
+      - assert: "dateNotAfter('2026-12-31')"
+        message: "创建时间不能晚于2026-12-31"

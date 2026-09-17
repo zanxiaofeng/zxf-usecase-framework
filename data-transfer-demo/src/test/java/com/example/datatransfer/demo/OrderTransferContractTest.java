@@ -29,6 +29,9 @@ class OrderTransferContractTest {
                 .pathExists("crmOrder.buyer.cities[*]")
                 .pathValueEquals("crmOrder.currency", "CNY")
                 .pathValueMatches("crmOrder.id", "^ORD-.*")
+                .pathValueEquals("crmOrder.orderDate", "2026-01-15")
+                .pathValueEquals("crmOrder.createdAt", "2026-01-15T10:30:00")
+                .pathValueEquals("crmOrder.eventTime", "2026-01-15T18:30:00+08:00")
                 .pathValueGreaterThan("crmOrder.totalAmount", 395)
                 .pathValueLessThan("crmOrder.totalAmount", 396)
                 .allPathValues("crmOrder.lines[*].unitPrice",

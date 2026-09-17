@@ -1,0 +1,21 @@
+version: "1.0"
+name: "OrderDateNormalize"
+
+rules:
+  - from: "orderId"
+    to: "order.id"
+  - from: "orderDate"
+    to: "order.orderDate"
+    transform: "dateFormat('dd-MM-yyyy', 'yyyy-MM-dd')"
+  - from: "createdAt"
+    to: "order.createdAt"
+    transform: "toIsoDateTime('yyyy/MM/dd HH:mm:ss')"
+  - from: "createdAtEpoch"
+    to: "order.eventTime"
+    transform: "epochToIso('Asia/Shanghai')"
+
+validations:
+  - path: "order.createdAt"
+    rules:
+      - assert: "dateAfter('2026-01-01')"
+        message: "创建时间必须晚于2026-01-01"

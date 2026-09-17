@@ -3,6 +3,9 @@ package com.example.datatransfer.core;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +19,7 @@ import com.example.datatransfer.core.spec.NullPolicy;
 import com.example.datatransfer.core.spec.MissingPolicy;
 import com.example.datatransfer.core.spec.SourceDeclaration;
 import com.example.datatransfer.core.spec.TransferOptions;
+import com.example.datatransfer.core.expression.JexlExpressionEvaluator;
 import com.example.datatransfer.core.flatten.FlatMapProcessor;
 import com.example.datatransfer.core.spec.TransferSpec;
 import com.example.datatransfer.core.exception.RuleMatchException;
@@ -197,6 +201,65 @@ class TransferEngineTest {
                 Map.of("shout", (v, args, ctx) -> String.valueOf(v).toUpperCase() + "!"));
 
         assertThat(engine.transfer("{\"name\": \"ok\"}").path("shouted").asString()).isEqualTo("OK!");
+    }
+
+    @Test
+    void now_withFixedClock_endToEnd() {
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("now-e2e")
+                .rules(List.of(MappingRule.builder()
+                        .from("orderId").to("processedAt").transform("now").build()))
+                .build();
+        TransferEngine engine = new TransferEngine(spec, Map.of(),
+                new JexlExpressionEvaluator(),
+                Clock.fixed(Instant.parse("2026-01-15T10:30:00Z"), ZoneOffset.UTC));
+
+        assertThat(engine.transfer("{\"orderId\": \"ORD-1\"}").path("processedAt").asString())
+                .isEqualTo("2026-01-15T10:30:00Z");
+    }
+
+    @Test
+    void dateFunctions_composeInChain() {
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("dt-chain")
+                .rules(List.of(MappingRule.builder().from("rawDate").to("orderDate")
+                        .transform("trim | dateFormat('yyyy-MM-dd', 'dd/MM/yyyy')").build()))
+                .build();
+
+        assertThat(new TransferEngine(spec).transfer(
+                "{\"rawDate\": \"  2026-01-15  \"}").path("orderDate").asString())
+                .isEqualTo("15/01/2026");
+    }
+
+    @Test
+    void now_skippedOnNullInput() {
+        // 评审 2.1 null 短路回归锚定：null 源值下 now 同样被跳过（须挂在必然存在的源字段上）
+        TransferOptions keep = new TransferOptions();
+        keep.setNullPolicy(NullPolicy.KEEP);
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("now-null").options(keep)
+                .rules(List.of(MappingRule.builder().from("maybeNull").to("ts")
+                        .transform("now").build()))
+                .build();
+        TransferEngine engine = new TransferEngine(spec, Map.of(),
+                new JexlExpressionEvaluator(),
+                Clock.fixed(Instant.parse("2026-01-15T10:30:00Z"), ZoneOffset.UTC));
+
+        assertThat(engine.transfer("{\"maybeNull\": null}").path("ts").isNull()).isTrue();
+    }
+
+    @Test
+    void epochToIso_bigDecimalValue_fromJsonFloat() {
+        // Jackson USE_BIG_DECIMAL_FOR_FLOATS：JSON 浮点字面量进引擎即 BigDecimal（.0 亦精确）
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("epoch-bd")
+                .rules(List.of(MappingRule.builder().from("ts").to("eventTime")
+                        .transform("epochToIso").build()))
+                .build();
+
+        assertThat(new TransferEngine(spec).transfer(
+                "{\"ts\": 1768473000000.0}").path("eventTime").asString())
+                .isEqualTo("2026-01-15T10:30:00Z");
     }
 
     @Test

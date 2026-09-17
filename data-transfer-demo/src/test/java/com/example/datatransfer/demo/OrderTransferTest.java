@@ -49,10 +49,14 @@ class OrderTransferTest {
                 .addCase("samples/order-001.json", "expected/order-001.json")
                 .addCaseJson("{\"orderId\": \"ORD-2\", \"customer\": {\"name\": \"Ann\", "
                         + "\"email\": \"ANN@x.com\", \"addresses\": []}, \"items\": "
-                        + "[{\"sku\": \"Z9\", \"price\": 10, \"qty\": 1}], \"status\": \"NEW\"}",
+                        + "[{\"sku\": \"Z9\", \"price\": 10, \"qty\": 1}], \"status\": \"NEW\", "
+                        + "\"orderDate\": \"20-02-2026\", \"createdAt\": \"2026/02/20 08:00:00\", "
+                        + "\"createdAtEpoch\": 1771574400000}",
                         "{\"crmOrder\": {\"id\": \"ORD-2\", \"buyer\": {\"name\": \"Ann\", "
                                 + "\"email\": \"ann@x.com\"}, \"lines\": [{\"productCode\": \"Z9\", "
                                 + "\"unitPrice\": 11.30, \"quantity\": 1}], \"state\": \"new\", "
+                                + "\"orderDate\": \"2026-02-20\", \"createdAt\": \"2026-02-20T08:00:00\", "
+                                + "\"eventTime\": \"2026-02-20T16:00:00+08:00\", "
                                 + "\"totalAmount\": 11.3, \"currency\": \"CNY\", \"source\": \"eCommerce\"}}")
                 .runAll();
     }

@@ -1,0 +1,37 @@
+version: "1.0"
+name: "DateTimeShowcase"
+
+# 日期时间函数族全样例：*ToIso* 家族 + now 时区对照（now 经 TransferAssert.withClock 确定性断言）
+rules:
+  - from: "orderDate"
+    to: "out.orderDate"
+    transform: "toIsoDate('dd-MM-yyyy')"
+
+  - from: "createdAt"
+    to: "out.createdAt"
+    transform: "toIsoDateTime('yyyy/MM/dd HH:mm:ss')"
+
+  # 时区对照：同一 epoch 毫秒，无参输出 UTC（Instant 形态），带参输出指定时区偏移形态
+  - from: "createdAtEpoch"
+    to: "out.eventTimeUtc"
+    transform: "epochToIso"
+
+  - from: "createdAtEpoch"
+    to: "out.eventTimeShanghai"
+    transform: "epochToIso('Asia/Shanghai')"
+
+  # now 须挂在必然存在的源字段上（引擎层 null 短路，仅 default 例外）
+  - from: "orderId"
+    to: "out.processedAtUtc"
+    transform: "now"
+
+  - from: "orderId"
+    to: "out.processedAtShanghai"
+    transform: "now('Asia/Shanghai')"
+
+validations:
+  # 归一后的无时区 ISO 形态可直接参与日期断言（带 +08:00 的形态不支持，须先归一）
+  - path: "out.createdAt"
+    rules:
+      - assert: "dateAfter('2026-01-01')"
+        message: "创建时间必须晚于2026-01-01"

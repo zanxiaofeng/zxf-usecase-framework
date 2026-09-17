@@ -1,6 +1,10 @@
 package com.example.datatransfer.core;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -9,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.IntPredicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,19 +67,31 @@ public class TransferEngine {
     private final boolean hasConditionalRules;
 
     public TransferEngine(TransferSpec spec) {
-        this(spec, Map.of(), new JexlExpressionEvaluator());
+        this(spec, Map.of(), new JexlExpressionEvaluator(), Clock.systemUTC());
     }
 
     public TransferEngine(TransferSpec spec, Map<String, TransformFunction> extraFunctions) {
-        this(spec, extraFunctions, new JexlExpressionEvaluator());
+        this(spec, extraFunctions, new JexlExpressionEvaluator(), Clock.systemUTC());
     }
 
     public TransferEngine(TransferSpec spec,
                           Map<String, TransformFunction> extraFunctions,
                           ExpressionEvaluator exprEvaluator) {
+        this(spec, extraFunctions, exprEvaluator, Clock.systemUTC());
+    }
+
+    /**
+     * 全参构造器：注入 {@link Clock} 供 {@code now} 变换函数使用
+     * （默认 {@link Clock#systemUTC()} 行为不变；固定 Clock 用于确定性测试）。
+     * extraFunctions 注册于内置 now 之后，可覆盖任意内置函数（含 now）。
+     */
+    public TransferEngine(TransferSpec spec,
+                          Map<String, TransformFunction> extraFunctions,
+                          ExpressionEvaluator exprEvaluator,
+                          Clock clock) {
         this.spec = Objects.requireNonNull(spec, "spec must not be null");
         this.exprEvaluator = Objects.requireNonNull(exprEvaluator, "exprEvaluator must not be null");
-        this.funcRegistry = new FuncRegistry();
+        this.funcRegistry = new FuncRegistry(clock);
         extraFunctions.forEach(funcRegistry::register);
         validateUnsupportedFeatures(spec);
         validateRules(spec);
@@ -363,24 +380,38 @@ public class TransferEngine {
     // validations（评审 6.x）：对目标 FlatMap 的数据值校验，defaults 后、Unflatten 前
     // =====================================================================
 
-    /** 内置断言谓词（评审 6.2）；数值比较统一 BigDecimal，null 值判定为断言失败（review P1） */
-    private static final Map<String, AssertPredicate> ASSERT_PREDICATES = Map.of(
-            "notNull", (value, args) -> value != null,
-            "notBlank", (value, args) -> value != null && !String.valueOf(value).isBlank(),
-            "gt", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) > 0,
-            "gte", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) >= 0,
-            "lt", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) < 0,
-            "lte", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) <= 0,
-            "eq", (value, args) -> equalsLoosely(value, args.get(0)),
-            "neq", (value, args) -> !equalsLoosely(value, args.get(0)),
-            "regex", (value, args) -> value != null && Pattern.matches(args.get(0), String.valueOf(value)));
+    /**
+     * 内置断言谓词（评审 6.2）；数值比较统一 BigDecimal，null 值判定为断言失败（review P1）。
+     * 日期断言（设计文档 §3.2「日期」行批次）：ISO 日期/日期时间统一经
+     * {@link #parseIsoDateTime} 比较，null 与不可解析值均判失败
+     * （不裸抛——比数值断言的非数值裸抛 NFE 更进一步，见设计文档附录 D.4）。
+     */
+    private static final Map<String, AssertPredicate> ASSERT_PREDICATES = Map.ofEntries(
+            Map.entry("notNull", (value, args) -> value != null),
+            Map.entry("notBlank", (value, args) -> value != null && !String.valueOf(value).isBlank()),
+            Map.entry("gt", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) > 0),
+            Map.entry("gte", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) >= 0),
+            Map.entry("lt", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) < 0),
+            Map.entry("lte", (value, args) -> value != null && decimal(value).compareTo(decimal(args.get(0))) <= 0),
+            Map.entry("eq", (value, args) -> equalsLoosely(value, args.get(0))),
+            Map.entry("neq", (value, args) -> !equalsLoosely(value, args.get(0))),
+            Map.entry("regex", (value, args) -> value != null && Pattern.matches(args.get(0), String.valueOf(value))),
+            Map.entry("dateBefore", (value, args) -> dateMatches(value, args, cmp -> cmp < 0)),
+            Map.entry("dateAfter", (value, args) -> dateMatches(value, args, cmp -> cmp > 0)),
+            Map.entry("dateNotBefore", (value, args) -> dateMatches(value, args, cmp -> cmp >= 0)),
+            Map.entry("dateNotAfter", (value, args) -> dateMatches(value, args, cmp -> cmp <= 0)));
 
     /** 数值断言集合（构造期校验参数可转数值；eq/neq 参数可为字符串故不在其列） */
     private static final Set<String> NUMERIC_ASSERTIONS = Set.of("gt", "gte", "lt", "lte");
 
+    /** 日期断言集合（构造期校验参数为 ISO 日期/日期时间；带 'Z'/offset 形态不支持） */
+    private static final Set<String> DATE_ASSERTIONS =
+            Set.of("dateBefore", "dateAfter", "dateNotBefore", "dateNotAfter");
+
     /** 需要实参的断言集合（构造期校验参数非空） */
     private static final Set<String> PARAMETRIZED_ASSERTIONS =
-            Set.of("gt", "gte", "lt", "lte", "eq", "neq", "regex");
+            Set.of("gt", "gte", "lt", "lte", "eq", "neq", "regex",
+                    "dateBefore", "dateAfter", "dateNotBefore", "dateNotAfter");
 
     private static final Pattern ASSERTION_CALL = Pattern.compile("^(\\w+)\\s*\\((.*)\\)$");
 
@@ -447,6 +478,45 @@ public class TransferEngine {
                         ("validation [path: %s]: assertion '%s' requires a numeric argument, was '%s' (spec: %s)")
                                 .formatted(path, name, args.get(0), specName));
             }
+        }
+        if (DATE_ASSERTIONS.contains(name)) {
+            try {
+                parseIsoDateTime(args.get(0));
+            } catch (DateTimeParseException e) {
+                throw new TransferAssemblyException(
+                        ("validation [path: %s]: assertion '%s' requires an ISO-8601 date or date-time argument, was '%s' (spec: %s)")
+                                .formatted(path, name, args.get(0), specName));
+            }
+        }
+    }
+
+    /** 日期断言执行：null 与不可解析值判失败（记 ValidationFailure），不裸抛 */
+    private static boolean dateMatches(@Nullable Object value, List<String> args, IntPredicate op) {
+        if (value == null) {
+            return false;
+        }
+        try {
+            return op.test(parseIsoDateTime(String.valueOf(value))
+                    .compareTo(parseIsoDateTime(args.get(0))));
+        } catch (DateTimeParseException unparseable) {
+            return false;
+        }
+    }
+
+    /**
+     * ISO 日期或日期时间统一解析为 {@link LocalDateTime}（日期按当日零点参与比较，
+     * LocalDate 值与 LocalDateTime 参数可混比）；断言执行与构造期参数预校验共用。
+     * 先按 LocalDateTime 尝试、失败回退 LocalDate（小写 't' 的合法 ISO 串 JDK 亦接受）；
+     * 含 {@code 'Z'}/offset 形态两侧均拒绝——目标形态合同校验不做时区折算，
+     * 须先经转换函数归一为无时区形态。
+     *
+     * @throws DateTimeParseException 文本非 ISO 日期/日期时间形态
+     */
+    private static LocalDateTime parseIsoDateTime(String text) {
+        try {
+            return LocalDateTime.parse(text);
+        } catch (DateTimeParseException notDateTime) {
+            return LocalDate.parse(text).atStartOfDay();
         }
     }
 

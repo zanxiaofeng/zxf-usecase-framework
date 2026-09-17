@@ -11,6 +11,9 @@
       {"productCode": "B002", "unitPrice": 56.50, "quantity": 3}
     ],
     "state": "paid",
+    "orderDate": "2026-01-15",
+    "createdAt": "2026-01-15T10:30:00",
+    "eventTime": "2026-01-15T18:30:00+08:00",
     "totalAmount": 395.50,
     "currency": "CNY",
     "source": "eCommerce"
