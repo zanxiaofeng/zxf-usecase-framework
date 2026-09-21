@@ -8,11 +8,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import tools.jackson.databind.ObjectMapper;
 
 import com.example.myapp.application.dto.UserDto;
-import com.example.myapp.framework.core.dataflow.AccessEvent;
-import com.example.myapp.framework.core.dataflow.DataflowTrace;
-import com.example.myapp.framework.core.dataflow.StepRef;
-import com.example.myapp.framework.core.UseCaseRegistry;
-import com.example.myapp.framework.test.UseCaseScenario;
+import com.example.usecase.framework.core.dataflow.AccessEvent;
+import com.example.usecase.framework.core.dataflow.DataflowTrace;
+import com.example.usecase.framework.core.dataflow.StepRef;
+import com.example.usecase.framework.core.UseCaseRegistry;
+import com.example.usecase.framework.test.UseCaseScenario;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
@@ -53,11 +53,11 @@ class UseCaseDataflowE2eTest {
 
         // Java client 子用例链（userBaseClient.invoke）：事件归属子用例自身
         assertThat(trace.events()).extracting(AccessEvent::useCaseId, AccessEvent::stepName, AccessEvent::key)
-                .contains(tuple("userBaseEnrichment", "loadUser", com.example.myapp.framework.core.dataflow.DataflowKey.payload()),
-                        tuple("userBaseEnrichment", "toDto", com.example.myapp.framework.core.dataflow.DataflowKey.payload()));
+                .contains(tuple("userBaseEnrichment", "loadUser", com.example.usecase.framework.core.dataflow.DataflowKey.payload()),
+                        tuple("userBaseEnrichment", "toDto", com.example.usecase.framework.core.dataflow.DataflowKey.payload()));
         // GreetingStep 写 payload（局部变量重组后的最终产物）
         assertThat(trace.writesOf("greetUser", "GreetingStep")).contains(
-                com.example.myapp.framework.core.dataflow.DataflowKey.payload());
+                com.example.usecase.framework.core.dataflow.DataflowKey.payload());
         assertThat(trace.useCases()).contains("greetUser", "userBaseEnrichment");
     }
 
@@ -89,7 +89,7 @@ class UseCaseDataflowE2eTest {
                 .filter(event -> event.stepName().equals("decodeToken") && event.op() == AccessEvent.Op.WRITE)
                 .toList();
         assertThat(decodeWrites).extracting(AccessEvent::key)
-                .containsExactly(com.example.myapp.framework.core.dataflow.DataflowKey.payload());
+                .containsExactly(com.example.usecase.framework.core.dataflow.DataflowKey.payload());
         assertThat(trace.readersOf("payload"))
                 .contains(StepRef.of("userBaseEnrichment", "loadUser"));
     }

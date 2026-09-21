@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 
 import com.example.myapp.application.client.UserBaseClient;
 import com.example.myapp.application.dto.UserDto;
-import com.example.myapp.framework.core.DataTransformer;
-import com.example.myapp.framework.core.StepContext;
+import com.example.usecase.framework.core.spi.DataTransformer;
+import com.example.usecase.framework.core.context.StepContext;
 
 /**
  * 演示「Java 代码内调用 shared 子用例」：自定义 Step Bean 注入类型化客户端，

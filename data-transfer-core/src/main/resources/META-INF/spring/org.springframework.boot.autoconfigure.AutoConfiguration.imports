@@ -1,1 +1,1 @@
-com.example.datatransfer.core.spring.DataTransferAutoConfiguration
+com.example.datatransfer.core.autoconfigure.DataTransferAutoConfiguration

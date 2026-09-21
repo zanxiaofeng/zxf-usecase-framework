@@ -12,7 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.example.myapp.domain.event.SnapshotCreatedEvent;
-import com.example.myapp.framework.web.ErrorResponseMapper;
+import com.example.usecase.framework.web.ErrorResponseMapper;
 import com.example.myapp.infrastructure.adapter.out.messaging.InMemoryEventPublisherAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;

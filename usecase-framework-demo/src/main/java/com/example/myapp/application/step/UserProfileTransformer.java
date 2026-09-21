@@ -7,9 +7,9 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 import com.example.myapp.application.dto.UserDto;
-import com.example.myapp.framework.core.DataTransformer;
-import com.example.myapp.framework.core.StepContext;
-import com.example.myapp.framework.core.dataflow.Dataflow;
+import com.example.usecase.framework.core.spi.DataTransformer;
+import com.example.usecase.framework.core.context.StepContext;
+import com.example.usecase.framework.core.dataflow.Dataflow;
 
 /**
  * 自定义业务 step 示例：合并用户主数据（payload）与信用分旁路数据（#vars.credit），生成用户画像。

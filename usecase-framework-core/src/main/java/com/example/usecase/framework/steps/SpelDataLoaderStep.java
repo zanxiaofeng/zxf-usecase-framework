@@ -1,0 +1,15 @@
+package com.example.usecase.framework.steps;
+
+import com.example.usecase.framework.core.spi.DataLoader;
+import org.jspecify.annotations.Nullable;
+import com.example.usecase.framework.expression.StepExpressionEvaluator;
+
+/**
+ * 配置驱动的 DataLoader：执行 SpEL 表达式（典型为调用出端口 Bean），结果写入 payload 或 {@code as} 变量。
+ */
+public final class SpelDataLoaderStep extends AbstractSpelStep implements DataLoader {
+
+    public SpelDataLoaderStep(String name, String expression, @Nullable String as, StepExpressionEvaluator evaluator) {
+        super(name, expression, as, evaluator);
+    }
+}

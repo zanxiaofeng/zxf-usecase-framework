@@ -1,0 +1,23 @@
+package com.example.usecase.framework.codec;
+
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
+public final class UrlCodec implements ReversibleCodec {
+
+    @Override
+    public String algorithm() {
+        return "url";
+    }
+
+    @Override
+    public String encode(String plain) {
+        return URLEncoder.encode(plain, StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public String decode(String encoded) {
+        return URLDecoder.decode(encoded, StandardCharsets.UTF_8);
+    }
+}

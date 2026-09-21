@@ -1,0 +1,31 @@
+package com.example.usecase.framework.steps.config;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import lombok.Data;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * encoder / decoder 步骤的 config schema。decoder 的算法可逆性依赖注册表类型
+ * （{@code ReversibleCodec}），仍由 CodecStepFactory 在装配期校验。
+ *
+ * <p>@Data + 字段初始值模式：默认值直接写在字段上，Jackson 绑定时仅覆盖 YAML 中出现的属性。</p>
+ */
+// NullAway.Init：字段由 Jackson 绑定填充（不走构造器初始化），非空约束由 Bean Validation 在绑定后承担
+@Data
+@SuppressWarnings("NullAway.Init")
+public class CodecStepConfig {
+
+    /** 算法名（必填），如 base64 / base64url / url / hex / md5 / sha256 */
+    @NotBlank
+    private String algorithm;
+
+    /** 输入 SpEL 表达式，缺省 #payload（空白串覆盖默认值属配置错误，装配期拒绝） */
+    @NotBlank
+    private String source = "#payload";
+
+    /** 结果写入 #vars 的旁路键；缺省写回 payload；@Pattern（非 @NotBlank）——null 表示未配置须放行，
+     *  仅拒绝显式配置了空白值的手滑 */
+    @Pattern(regexp = "\\S+", message = "must not be blank when set")
+    private @Nullable String as;
+}

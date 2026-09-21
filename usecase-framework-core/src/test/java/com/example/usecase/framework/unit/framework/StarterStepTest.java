@@ -1,0 +1,98 @@
+package com.example.usecase.framework.unit.framework;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
+import tools.jackson.databind.ObjectMapper;
+
+import com.example.usecase.framework.assemble.StepDefinition;
+import com.example.usecase.framework.core.spi.Step;
+import com.example.usecase.framework.core.context.StepContext;
+import com.example.usecase.framework.core.exception.UseCaseAssemblyException;
+import com.example.usecase.framework.expression.StepExpressionEvaluator;
+import com.example.usecase.framework.steps.StarterStepFactory;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * starter 步骤：提取关键业务标识 → biz 关键数据区 + MDC；#biz 可被后续表达式引用。
+ */
+class StarterStepTest {
+
+    private final StepExpressionEvaluator evaluator = new StepExpressionEvaluator(null);
+
+    @AfterEach
+    void clearMdc() {
+        MDC.clear();
+    }
+
+    @Test
+    void capturesKeysIntoBizAreaAndMdc() {
+        Map<String, Object> keys = new LinkedHashMap<>();
+        keys.put("businessId", "#path.id");
+        keys.put("tenantId", "#headers['X-Tenant-Id']");
+        keys.put("source", "app");                       // 字面量
+        keys.put("channel", "#{headers['X-Channel']}");  // 模板形式
+
+        Step step = new StarterStepFactory(evaluator)
+                .create(new StepDefinition("start", "starter", null, Map.of("keys", keys)));
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("X-Tenant-Id", "t-42");
+        headers.put("X-Channel", "mobile");
+        StepContext context = StepContext.of(
+                TestServerRequests.getRequest(Map.of("id", "u1"), headers), new ObjectMapper());
+
+        step.execute(context);
+
+        assertThat(context.getBiz())
+                .containsEntry("businessId", "u1")
+                .containsEntry("tenantId", "t-42")
+                .containsEntry("source", "app")
+                .containsEntry("channel", "mobile");
+        // 同步 MDC，供全链路日志关联
+        assertThat(MDC.get("biz.businessId")).isEqualTo("u1");
+        assertThat(MDC.get("biz.tenantId")).isEqualTo("t-42");
+        // 后续步骤可经 #biz 引用
+        assertThat(evaluator.evaluate("#biz.businessId", context)).isEqualTo("u1");
+    }
+
+    @Test
+    void missingKeysFailsFastAtAssembly() {
+        assertThatThrownBy(() -> new StarterStepFactory(evaluator)
+                .create(new StepDefinition("start", "starter", null, Map.of())))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("keys");
+    }
+
+    @Test
+    void blankKeyExpressionFailsFastAtAssembly() {
+        // 容器元素约束：keys 的表达式值不允许空白（声明式校验，替代原工厂内的逐条 null check）
+        assertThatThrownBy(() -> new StarterStepFactory(evaluator)
+                .create(new StepDefinition("start", "starter", null, Map.of("keys", Map.of("businessId", " ")))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("keys");
+    }
+
+    @Test
+    void mdcValueStripsControlCharactersWhileBizKeepsRawValue() {
+        Map<String, Object> keys = Map.of("channel", "#headers['X-Channel']");
+        Step step = new StarterStepFactory(evaluator)
+                .create(new StepDefinition("start", "starter", null, Map.of("keys", keys)));
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("X-Channel", "mobile\r\nFAKE-LOG");   // 外部可控值带控制字符（日志注入载荷）
+        StepContext context = StepContext.of(
+                TestServerRequests.getRequest(Map.of(), headers), new ObjectMapper());
+
+        step.execute(context);
+
+        // MDC（日志通道）剥离控制字符；biz（数据通道）保留原始值
+        assertThat(MDC.get("biz.channel")).isEqualTo("mobileFAKE-LOG");
+        assertThat(context.getBiz("channel")).isEqualTo("mobile\r\nFAKE-LOG");
+    }
+}

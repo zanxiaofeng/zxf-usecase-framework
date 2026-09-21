@@ -1,0 +1,135 @@
+package com.example.usecase.framework.steps;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+import com.example.usecase.framework.auth.AuthHandler;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpMethod;
+import org.springframework.util.CollectionUtils;
+import org.springframework.web.client.RestClient;
+
+import com.example.usecase.framework.core.spi.HttpRequester;
+import com.example.usecase.framework.core.context.StepContext;
+import com.example.usecase.framework.core.exception.HttpStepException;
+import com.example.usecase.framework.expression.StepExpressionEvaluator;
+
+/**
+ * 配置驱动的外部 HTTP 调用步骤。
+ *
+ * <p>配置示例：</p>
+ * <pre>{@code
+ * - name: fetchCredit
+ *   type: httpRequester
+ *   config:
+ *     method: GET                                  # 缺省 GET
+ *     url: "https://credit.internal/scores/{userId}"
+ *     uriVariables:                                # URI 模板变量，值支持 SpEL
+ *       userId: "#path.id"
+ *     headers:                                     # 值支持字面量 / #{...} 模板 / SpEL
+ *       X-Request-From: "usecase-framework"
+ *     body: "{'id': #payload.id}"                  # 可选，SpEL 表达式，结果序列化为 JSON
+ *     auth:                                        # 可选，挂接 AuthHandler
+ *       scheme: bearer                             # none/basic/bearer/apiKey/clientCredentials/自定义
+ *       options:
+ *         token: "${credit.token}"
+ *     as: credit                                   # 可选：写入 #vars.credit 而不占用 payload
+ * }</pre>
+ *
+ * <p>非 2xx 响应抛 {@link HttpStepException}；连接失败/超时由 RestClient 抛出
+ * ResourceAccessException，传输层统一映射为 502。</p>
+ */
+@Slf4j
+@RequiredArgsConstructor
+public final class HttpRequesterStep implements HttpRequester {
+
+    private final String name;
+    private final HttpMethod method;
+    private final String url;
+    private final Map<String, Object> uriVariables;
+    private final Map<String, Object> headers;
+    private final @Nullable String bodyExpression;
+    private final AuthSpec authSpec;
+    private final @Nullable String as;
+    private final RestClient restClient;
+    private final StepExpressionEvaluator evaluator;
+
+    @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public void execute(StepContext context) {
+        Map<String, Object> resolvedUriVariables = resolveMap(uriVariables, context);
+        RestClient.RequestBodySpec request = restClient.method(method).uri(url, resolvedUriVariables);
+        resolveMap(headers, context).forEach((key, value) -> {
+            if (value != null) {
+                request.header(key, String.valueOf(value));
+            }
+        });
+        authSpec.apply(request);
+        if (bodyExpression != null) {
+            // 配置了 body 但求值为 null 属表达式/管道缺陷：fail-fast 显式报错，避免发出无语义的 null 体
+            request.body(Objects.requireNonNull(evaluator.evaluate(bodyExpression, context, name),
+                    () -> "http step [" + name + "]: body expression evaluated to null"));
+        }
+        log.debug("http step [{}] {} {}", name, method, url);
+        // NullAway 压制：Spring 7 源码中 exchange 的类型变量上界实为 T extends @Nullable Object
+        // （可返回 null 表达无体响应），但 NullAway 0.12.7 未读取 jar 内该 TYPE_USE 上界注解，误报非空
+        @SuppressWarnings("NullAway")
+        @Nullable Object result = request.exchange((req, res) -> {
+            int status = res.getStatusCode().value();
+            Object responseBody;
+            try {
+                responseBody = res.bodyTo(Object.class);
+            } catch (Exception e) {
+                // 下游畸形响应体不阻断状态码判定：降级为无体，留 DEBUG 痕迹（静默吞掉会让 HttpStepException 的 snippet 变空串）
+                log.debug("http step [{}]: response body read failed, treated as no body", name, e);
+                responseBody = null;
+            }
+            if (status >= 400) {
+                throw new HttpStepException(name, status, snippetOf(responseBody));
+            }
+            return responseBody;
+        });
+        context.storeResult(result, as, true);
+    }
+
+    private Map<String, Object> resolveMap(Map<String, Object> source, StepContext context) {
+        if (CollectionUtils.isEmpty(source)) {
+            return Map.of();
+        }
+        Map<String, Object> resolved = new LinkedHashMap<>();
+        source.forEach((key, value) ->
+                resolved.put(key, value instanceof String text ? evaluator.resolve(text, context, name) : value));
+        return resolved;
+    }
+
+    private static String snippetOf(@Nullable Object responseBody) {
+        if (responseBody == null) {
+            return "";
+        }
+        String text = String.valueOf(responseBody);
+        return text.length() <= 500 ? text : text.substring(0, 500);
+    }
+
+    /**
+     * httpRequester 的认证配置：装配期已解析的单个 {@link AuthHandler} + options。
+     * handler 为 null（未配置 auth）时不携带认证头；scheme 存在性与 options 校验
+     * 由 HttpRequesterStepFactory 在装配期完成（fail-fast），运行期零查找零防御分支。
+     */
+    static record AuthSpec(@Nullable AuthHandler handler, Map<String, Object> options) {
+
+        /** 应用认证头；未配置认证时什么都不做 */
+        void apply(RestClient.RequestHeadersSpec<?> request) {
+            if (handler == null) {
+                return;
+            }
+            handler.apply(request, options);
+        }
+    }
+}

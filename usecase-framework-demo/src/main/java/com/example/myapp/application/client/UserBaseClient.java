@@ -3,8 +3,8 @@ package com.example.myapp.application.client;
 import org.springframework.stereotype.Component;
 
 import com.example.myapp.application.dto.UserDto;
-import com.example.myapp.framework.core.invoke.AbstractUseCaseClient;
-import com.example.myapp.framework.core.invoke.UseCaseInvoker;
+import com.example.usecase.framework.core.invoke.AbstractUseCaseClient;
+import com.example.usecase.framework.core.invoke.UseCaseInvoker;
 
 /**
  * shared 用例 {@code userBaseEnrichment} 的类型化 Java 客户端。

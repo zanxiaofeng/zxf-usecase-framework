@@ -12,9 +12,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import com.example.myapp.application.dto.UserDto;
 import com.example.myapp.domain.event.SnapshotCreatedEvent;
-import com.example.myapp.framework.core.UseCaseRegistry;
-import com.example.myapp.framework.test.RecordingEventPublisher;
-import com.example.myapp.framework.test.UseCaseScenario;
+import com.example.usecase.framework.core.UseCaseRegistry;
+import com.example.usecase.framework.test.RecordingEventPublisher;
+import com.example.usecase.framework.test.UseCaseScenario;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
