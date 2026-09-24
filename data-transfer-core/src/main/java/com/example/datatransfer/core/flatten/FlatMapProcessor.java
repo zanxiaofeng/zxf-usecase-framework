@@ -50,7 +50,8 @@ public final class FlatMapProcessor {
     /**
      * 规则/断言路径（可含 {@code [*]} 通配与 {@code [0]} 字面索引）→ 匹配正则：
      * {@code [*]} 展开为数字索引，字面方括号与其他元字符转义（方括号是正则元字符，
-     * 直接拼接会把 {@code [0]} 当字符类——设计文档 §8.4 注记的论断已在实测中修正）。
+     * 直接拼接会把 {@code [0]} 当字符类——设计文档 §8.4 注记的论断已在实测中修正）；
+     * {@code $} 同为正则元字符（行尾锚），不转义会使 {@code $} 暂存前缀路径永不匹配（§6.8）。
      */
     public static String wildcardPattern(String path) {
         return path
@@ -58,6 +59,7 @@ public final class FlatMapProcessor {
                 .replace(".", "\\.")
                 .replace("[", "\\[")
                 .replace("]", "\\]")
+                .replace("$", "\\$")
                 .replace("__WILDCARD__", "\\[\\d+\\]");
     }
 

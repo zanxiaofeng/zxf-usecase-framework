@@ -5,6 +5,23 @@ options:
   nullPolicy: "skip"
   missingPolicy: "warn"
 
+# 中间结果（设计文档 §6.8）：Phase 1.5 在 rules 前按声明序求值，$ 命名空间不进最终输出；
+# 只能前向引用更早声明的暂存键。复杂转换先算中间值、再基于原始输入与中间值完成映射。
+# 段落顺序即执行顺序：intermediate → rules → computed → defaults → validations。
+intermediate:
+  # 形态一（from + transform）：归一邮箱为小写
+  - to: "$buyerEmail"
+    from: "customer.email"
+    transform: "lower"
+
+  # 形态二（expr，跨字段组合）：买家标识 = 姓名 + 邮箱；串联引用 $buyerEmail（前向引用）
+  - to: "$buyerLabel"
+    expr: "customer.name.trim() + ' <' + $buyerEmail + '>'"
+
+  # 形态二（expr，条件派生）：PAID 订单九折，其余原价
+  - to: "$discountRate"
+    expr: "status == 'PAID' ? 0.9 : 1.0"
+
 rules:
   - from: "orderId"
     to: "crmOrder.id"
@@ -45,6 +62,15 @@ rules:
   - from: "createdAtEpoch"
     to: "crmOrder.eventTime"
     transform: "epochToIso('Asia/Shanghai')"
+
+  # 中间结果参与映射：$buyerLabel 暂存值直接作为映射源
+  - from: "$buyerLabel"
+    to: "crmOrder.buyer.label"
+
+  # transform 实参引用暂存：折后价 = 原价 × $discountRate（逐元素，[*] 索引对位）
+  - from: "items[*].price"
+    to: "crmOrder.lines[*].discountedPrice"
+    transform: "multiply($discountRate) | round(2)"
 
 computed:
   - to: "crmOrder.totalAmount"

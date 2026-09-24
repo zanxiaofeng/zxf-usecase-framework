@@ -110,4 +110,57 @@ class TransferSpecValidatorTest {
                 .isInstanceOf(TransferSpecValidator.SpecValidationException.class)
                 .hasMessageContaining("invalid");
     }
+
+    @Test
+    void intermediateSection_validAndLoaded() throws Exception {
+        String yaml = """
+                version: "1.0"
+                name: "staged"
+                rules:
+                  - from: "orderId"
+                    to: "crmOrder.id"
+                  - from: "$discountRate"
+                    to: "crmOrder.rate"
+                intermediate:
+                  - to: "$discountRate"
+                    from: "customer.tier"
+                    transform: "trim"
+                  - to: "$label"
+                    expr: "'x' + $discountRate"
+                """;
+
+        var result = validator.validate(yaml);
+        assertThat(result.isValid()).as(() -> String.join(";", result.getErrorMessages())).isTrue();
+
+        var spec = validator.validateAndLoad(
+                new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)), "intermediate");
+
+        assertThat(spec.intermediateOrEmpty()).hasSize(2);
+        assertThat(spec.intermediateOrEmpty().get(0).getTo()).isEqualTo("$discountRate");
+        assertThat(spec.getRules().get(1).getFrom()).isEqualTo("$discountRate");
+    }
+
+    @Test
+    void intermediateFormMutualExclusion_rejected() {
+        String both = VALID + """
+                intermediate:
+                  - to: "$a"
+                    from: "orderId"
+                    expr: "1"
+                """;
+        assertThat(validator.validate(both).isValid()).isFalse();
+
+        String neither = VALID + """
+                intermediate:
+                  - to: "$a"
+                """;
+        assertThat(validator.validate(neither).isValid()).isFalse();
+
+        String nonPrefixedTo = VALID + """
+                intermediate:
+                  - to: "a"
+                    expr: "1"
+                """;
+        assertThat(validator.validate(nonPrefixedTo).isValid()).isFalse();
+    }
 }

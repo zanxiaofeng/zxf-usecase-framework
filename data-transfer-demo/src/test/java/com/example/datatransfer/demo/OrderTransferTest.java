@@ -53,8 +53,9 @@ class OrderTransferTest {
                         + "\"orderDate\": \"20-02-2026\", \"createdAt\": \"2026/02/20 08:00:00\", "
                         + "\"createdAtEpoch\": 1771574400000}",
                         "{\"crmOrder\": {\"id\": \"ORD-2\", \"buyer\": {\"name\": \"Ann\", "
-                                + "\"email\": \"ann@x.com\"}, \"lines\": [{\"productCode\": \"Z9\", "
-                                + "\"unitPrice\": 11.30, \"quantity\": 1}], \"state\": \"new\", "
+                                + "\"email\": \"ann@x.com\", \"label\": \"Ann <ann@x.com>\"}, "
+                                + "\"lines\": [{\"productCode\": \"Z9\", "
+                                + "\"unitPrice\": 11.30, \"discountedPrice\": 10.00, \"quantity\": 1}], \"state\": \"new\", "
                                 + "\"orderDate\": \"2026-02-20\", \"createdAt\": \"2026-02-20T08:00:00\", "
                                 + "\"eventTime\": \"2026-02-20T16:00:00+08:00\", "
                                 + "\"totalAmount\": 11.3, \"currency\": \"CNY\", \"source\": \"eCommerce\"}}")

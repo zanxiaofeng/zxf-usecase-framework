@@ -41,6 +41,9 @@ public class TransferSpec {
     /** 批量路径改写（设计文档 §3.3；第一版未实现执行语义，引擎构造期 fail-fast） */
     private List<PathRewrite> rewrites;
 
+    /** 中间结果（暂存区）：rules 前在源上下文顺序求值，$ 命名空间不进输出（设计文档 §6.8） */
+    private List<IntermediateField> intermediate = new ArrayList<>();
+
     /** 计算字段：在目标 FlatMap 上求值，表达式引用目标路径（设计文档 §6.2） */
     private List<ComputedField> computed = new ArrayList<>();
 
@@ -54,6 +57,10 @@ public class TransferSpec {
     private ObservabilityConfig observability;
 
     /** 容器空安全视图（builder 路径可能未初始化） */
+    public List<IntermediateField> intermediateOrEmpty() {
+        return intermediate == null ? List.of() : intermediate;
+    }
+
     public List<ComputedField> computedOrEmpty() {
         return computed == null ? List.of() : computed;
     }

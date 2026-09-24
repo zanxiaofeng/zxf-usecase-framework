@@ -253,6 +253,14 @@ class TransferEngine:
         # Phase 1: Flatten（多源时按 sources 声明分别拍平，以 alias 为根前缀合并，见 §6.4）
         flat_src = Flattener.flatten(source, self.plan.separator)
 
+        # Phase 1.5: Intermediate —— 暂存区按声明序求值（§6.8；上下文 = 源 + 已产出暂存）
+        flat_stage = {}
+        for field in self.plan.intermediate:
+            ctx = {**flat_src, **flat_stage}
+            value = eval_expr(field.expr, ctx) if field.expr else apply_chain(field.transform, ctx[field.from], ctx)
+            flat_stage.update(stage_put(field.to, value))   # $ 命名空间；容器值展开为扁平键集
+        flat_src = {**flat_src, **flat_stage}   # 合并视图：规则 from / transform 实参 / 条件均可引 $ 键
+
         # Phase 2: Transform —— 按 CompiledPlan 逐规则执行
         flat_tgt = {}
         for rule in self.plan.rules:
@@ -492,6 +500,55 @@ validations:
   `collect`（收集全部失败后统一抛，数据迁移场景）；`ValidationException#getFailures()` 取
   `List<ValidationFailure{path, rule, message, actualValue}>`。
 - **限制**：condition 形态的 path 至多一级 `[*]`（多级元素语义歧义，断言形态无此限制）。
+
+### 6.8 中间结果（intermediate，暂存区；2026-09-24 落地）
+
+复杂字段转换难以一步完成时，先计算**中间结果**、再基于原始输入与中间结果完成总体转换。
+`intermediate` 为 TransferSpec 顶层声明段，执行于 Flatten 之后、规则映射之前（Phase 1.5），
+结果写入 **`$` 前缀的独立命名空间**——暂存键不进入最终输出。spec 编写时建议将该段置于
+`rules` 之前，保持段落顺序与执行顺序一致（intermediate → rules → computed → defaults →
+validations；YAML 键序不影响解析，纯为可读性惯例）：
+
+```yaml
+intermediate:
+  # 形态一：from（源/已产出暂存的字面路径）+ 可选 transform 链（复用现有函数，含 extraFunctions）
+  - to: "$discountRate"
+    from: "customer.tier"
+    transform: "tierToRate"
+  # 形态二：expr（JEXL，上下文 = 源 + 已产出暂存；可跨字段组合，整体结果可为容器）
+  - to: "$fullAddress"
+    expr: "customer.city + ' / ' + customer.street"
+
+rules:
+  - from: "items[*].price"
+    to: "crmOrder.lines[*].unitPrice"
+    transform: "multiply($discountRate) | round(2)"   # transform 未加引号的 $path 实参：从合并视图取值代入
+  - from: "$fullAddress"                              # rules.from 可引暂存路径（支持 [*] 通配导航容器暂存）
+    to: "crmOrder.buyer.address"
+
+computed:
+  - to: "crmOrder.totalAmount"
+    expr: "sum(crmOrder.lines[*].unitPrice * crmOrder.lines[*].quantity)"   # computed 亦可引 $ 键
+```
+
+**执行语义：**
+
+- **顺序求值**：按声明序逐条计算，上下文 = 源 FlatMap + 已产出暂存——只能**前向引用**更早声明的
+  暂存键（声明序即 DAG）；引用未声明/后向键构造期 fail-fast。
+- **不进输出**：暂存写入独立 Map，Unflatten 只拍目标——中间结果天然不污染响应。
+- **策略复用**：from 形态的键缺失按 `missingPolicy` 处置（处置后不产出该键）；值为 null 且
+  `nullPolicy=skip` 时同样不产出（后续引用以运行期缺失暴露）。
+- **容器暂存展开**：expr 结果为 Map/List 时展开为 `to.` 前缀的扁平键集（如 `$x[0].sku`），
+  规则 from 即可对暂存数组做 `[*]` 通配导航；空容器保留为叶子值。
+- **`$` 冲突 fail-fast**：源数据存在 `$` 开头的键时（与暂存命名空间在合并视图中无法区分）拒绝转换。
+
+**构造期校验（fail-fast）**：`to` 必须 `$` 前缀纯点路径（不含 `[*]`/`[n]`，根声明唯一——`$a` 与
+`$a.b` 同根冲突）；from 与 expr 二选一（Schema oneOf 同约束）；from 不支持 `[*]`（数组派生用
+expr 整体取值）；rules.from 的 `$` 引用、transform 的 `$path` 实参、computed.expr 的 `$` 引用
+均须有对应 intermediate 声明。
+
+**已知限制**：聚合形态 `sum(...)` 为整体表达式（§6.2 求值器设计），与算术混合（`sum(...) * $x`）
+需经标量中转；表达式字符串字面量中的 `$ident` 会被构造期引用检查误报为引用（避免书写）。
 
 ---
 
@@ -2713,7 +2770,7 @@ usecase `errorMappings` 把数据类错误映射 4xx。② validations 校验段
 - **1.6/9.2 多源约束**：各源拍平后以 `alias.` 根前缀合并；规则 `from` 必须以某 alias 开头（否则按 missingPolicy 处置）；装配期 alias 唯一性校验
 - **1.3 computed 依赖**：按声明顺序执行（当前实现已隐式支持前向引用——flatTarget 逐步更新），补拓扑循环检测；后向引用以运行期求值失败暴露
 - **2.5 日期函数**：默认 UTC + 可选时区参数（**已落地 2026-09-16**，§D.4）
-- **2.9 coalesce**：Phase 2 执行，仅引用源 FlatMap 路径
+- **2.9 coalesce**：Phase 2 执行，仅引用源 FlatMap 路径（**注**：§6.8 intermediate 落地后，多字段取首个非空可经 expr 形态 `a ?: b ?: c` 表达，独立内置函数降为语法糖，按需再实现）
 - **2.10 类型转换函数族**：`toEnum(className)` / `toIsoDate(fmt)` / `toIsoDateTime(fmt)` / `toBigDecimal`（金额场景替代 toNumber）；不引入独立 ConversionHandler（保持 TransformFunction 单一扩展点，接口文档补类型转换专项示例）。**toIsoDate/toIsoDateTime 已落地 2026-09-16**（§D.4）；`toEnum`/`toBigDecimal` 仍未实现
 - **3.1/9.3 数组稀疏**：索引忠实传递（`items[1]` → `lineItems[1]`，空洞由 Unflattener 垫槽位为 null——当前实现即此行为，文档固化）；压缩重排经显式变换函数
 - **2.3 otherwise 字面量**：可加 `const(v)` 内置函数实现无条件字面输出（default 仅兜 null 的语义不变）
@@ -2782,3 +2839,29 @@ usecase `errorMappings` 把数据类错误映射 4xx。② validations 校验段
 - **P1 修复**：① `DateTimeFunctions` 类头重复 Javadoc（编辑残留）；② SMART 静默归一明示（见上「解析精度」裁定 + 锚定测试）；③ IDE 生成文件退库（30 个 `.factorypath`/`.settings` 含 usecase 侧存量，`git rm --cached` + `.gitignore` 补不锚定 `.settings/` 与 `.factorypath`——usecase 侧 JDT prefs 正是「坏 class 污染 target」坑的源头之一）。
 - **P2 修复**：`parseIsoDateTime` 改「先 `LocalDateTime.parse` 失败回退 `LocalDate.parse`」（修复 `contains("T")` 启发式对小写 `t` 合法 ISO 串的误拒）；`DateTimeFunctions` 异常消息统一英文（跟随库内基调）；`epochToIso`/`now` 参数个数校验前置到 null 短路之前（`now` 签名统一为 value 首参、null 防卫内聚）；`toIsoDate`/`toIsoDateTime` 抽取 `parseWithPattern`（含 extractor，字段缺失消息不回退为裸 `DateTimeException`）；新增 5 个锚定测试（SMART 归一 / offset-id 时区 `GMT+08` / 多参拒绝 / offset 值判失败 / `withClock`+`registerFunction` 组合遮蔽胜出）。
 - **留档未修**（并入 D.3 P2 清单）：`DateTimeFormatter.ofPattern` 每值重编译（热路径，可与 D.3 的 regex Pattern 缓存化合并处理）；dateFormat 的 locale pattern（`a`/`MMM`/`EEE`）行为不测（Javadoc 已提示平台 Locale 依赖）。
+
+### D.5 中间结果批次（2026-09-24，§6.8 落地，387/387 全绿）
+
+**功能**：`intermediate` 暂存区（§6.8）——复杂字段转换的两阶段表达：Phase 1.5 在源上下文顺序
+计算中间结果（`$` 命名空间，不进输出），rules 的 from/transform 实参、条件、computed.expr 均
+可引用。双形态：`from + transform`（复用变换链）与 `expr`（JEXL 跨字段组合，容器结果自动展开
+为扁平键集支持 `[*]` 导航）。
+
+**构造期校验（fail-fast）**：`to` 形态与根唯一性、双形态二选一、from 禁 `[*]`、前向引用约束
+（intermediate 自身 + rules.from + transform `$path` 实参 + computed.expr 的 `$` 引用必须有
+更早的 intermediate 声明——声明序即 DAG，不做拓扑排序）；运行期源键 `$` 前缀冲突 fail-fast。
+
+**实现踩坑（留档）**：
+
+- `FlatMapProcessor.wildcardPattern` 生成正则时未转义 `$`——`$` 是正则行尾锚，`$path` 模式
+  永不匹配。修复为替换链中统一 `replace("$", "\\$")`（连同 `[*]`/`[0]`/`.` 的既有转义教训：
+  路径语法每引入一个新元字符，wildcardPattern 必须同步转义并补锚定测试）。
+- `mvn test -rf :模块` 恢复构建时被跳过模块取自 `~/.m2` 旧 jar，引发大面积
+  「package does not exist」误报——改包名/改 API 后必须全量 reactor 构建。
+- YAML 顶层键重复（`VALID + 追加 rules:` 的测试拼接模式）静默后值覆盖，Schema 校验对覆盖后
+  文档通过——测试构造多段 YAML 用完整独立文档而非拼接。
+
+**范围裁定**：computed 间拓扑循环检测仍维持 D.2-1.3 待办（本次仅覆盖 `$` 引用维度的静态检查）；
+聚合与算术混合（`sum(...) * $x`）受 §6.2 求值器整体表达式限制，经标量中转表达；usecase 侧
+`DataTransferStep#dataflow()` 为 step 级键级血缘（读 payload/写输出），intermediate 属 spec
+内部产物，血缘声明无需变更。

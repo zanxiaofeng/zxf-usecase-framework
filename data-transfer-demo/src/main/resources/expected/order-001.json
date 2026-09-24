@@ -4,11 +4,12 @@
     "buyer": {
       "name": "Zhang San",
       "email": "zhang@example.com",
+      "label": "Zhang San <zhang@example.com>",
       "cities": ["Shanghai", "Beijing"]
     },
     "lines": [
-      {"productCode": "A001", "unitPrice": 113.00, "quantity": 2},
-      {"productCode": "B002", "unitPrice": 56.50, "quantity": 3}
+      {"productCode": "A001", "unitPrice": 113.00, "discountedPrice": 90.00, "quantity": 2},
+      {"productCode": "B002", "unitPrice": 56.50, "discountedPrice": 45.00, "quantity": 3}
     ],
     "state": "paid",
     "orderDate": "2026-01-15",
