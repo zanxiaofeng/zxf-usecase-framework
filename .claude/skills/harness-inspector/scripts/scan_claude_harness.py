@@ -3,16 +3,17 @@
 
 Detects every mechanism that shapes Claude Code's behavior, classified into
 scope(User/Project) x category(memory/agent/instruction/skill/command/hook/setting):
-- memory: CLAUDE.md (project/nested/imports), ~/.claude/CLAUDE.md
-- instruction: .claude/rules/ (project) and ~/.claude/rules/ (user-level, loaded first, project wins)
+- memory: CLAUDE.md (project/nested/imports), ~/.claude/CLAUDE.md,
+  auto memory (~/.claude/projects/<project>/memory/)
+- instruction: .claude/rules/ (project) and ~/.claude/rules/ (user-level loads first; sets do not override each other)
 - setting: .claude/settings.json, .claude/settings.local.json, ~/.claude/settings.json
   (permissions/env/model/statusline/disableAllHooks/HTTP hook security)
-- hook: settings.json "hooks" (31 lifecycle events: SessionStart/Setup/InstructionsLoaded/
+- hook: settings.json "hooks" (33 lifecycle events: SessionStart/Setup/InstructionsLoaded/
   UserPromptSubmit/UserPromptExpansion/MessageDisplay/PreToolUse/PermissionRequest/PostToolUse/
   PostToolUseFailure/PostToolBatch/PermissionDenied/Notification/SubagentStart/SubagentStop/
   Stop/StopFailure/TeammateIdle/TaskCreated/TaskCompleted/ConfigChange/CwdChanged/DirectoryAdded/
-  FileChanged/PreCompact/PostCompact/SessionEnd/Elicitation/ElicitationResult/WorktreeCreate/
-  WorktreeRemove), .claude/output-styles/, .mcp.json, plugins
+  FileChanged/PreCompact/PostCompact/PreModelSwitch/PostModelSwitch/SessionEnd/Elicitation/
+  ElicitationResult/WorktreeCreate/WorktreeRemove), .claude/output-styles/, .mcp.json, plugins
 - command/agent/skill: .claude/commands/, .claude/agents/, .claude/skills/
 
 Usage:
@@ -45,6 +46,8 @@ HOOK_EVENTS = (
     "ConfigChange", "CwdChanged", "DirectoryAdded", "FileChanged",
     # Compaction
     "PreCompact", "PostCompact",
+    # Model switch
+    "PreModelSwitch", "PostModelSwitch",
     # Worktree
     "WorktreeCreate", "WorktreeRemove",
     # MCP elicitation
@@ -53,16 +56,34 @@ HOOK_EVENTS = (
 
 
 def load_json(path):
+    """Load a settings JSON file.
+
+    Claude Code settings are strict JSON: comments or trailing commas make the
+    whole file a Settings Error. Try strict parsing first; only when that
+    fails, strip comments/trailing commas so the scan can continue and return
+    a warning string so the report flags the real problem. (Never strip block
+    comments -- glob patterns like **/*.key look like /* ... */ to a regex.)
+
+    Returns (data, err): err is a parse error (data is None), a warning
+    (data is valid but the file is not strict JSON), or None.
+    """
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             raw = f.read()
-        # JSONC tolerance: only strip full-line comments and trailing commas,
-        # never '//' inside strings (URLs like https:// would break otherwise).
-        raw = re.sub(r"^\s*//[^\n]*", "", raw, flags=re.M)
-        raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
-        raw = re.sub(r",(\s*[}\]])", r"\1", raw)
+    except OSError as e:
+        return None, str(e)
+    try:
         return json.loads(raw), None
-    except (OSError, json.JSONDecodeError) as e:
+    except json.JSONDecodeError:
+        pass
+    try:
+        # JSONC tolerance: full-line // comments and trailing commas only,
+        # never '//' inside strings (URLs like https:// would break otherwise).
+        stripped = re.sub(r"^\s*//[^\n]*", "", raw, flags=re.M)
+        stripped = re.sub(r",(\s*[}\]])", r"\1", stripped)
+        return json.loads(stripped), ("含注释或尾逗号，非严格 JSON —— "
+                                      "Claude Code 会报 Settings Error 并跳过该文件")
+    except json.JSONDecodeError as e:
         return None, str(e)
 
 
@@ -77,10 +98,32 @@ def parse_frontmatter(path):
 
 
 def fm_field(fm, key):
+    """Get a frontmatter value, joining block scalars (>/|) and simple lists.
+
+    Frontmatter is parsed line-by-line; a 'key: >' or 'key:' with an indented
+    body collects the indented lines so multi-line descriptions and list
+    values don't degrade to '>' or ''.
+    """
     if not fm:
         return None
-    m = re.search(rf"^{re.escape(key)}\s*:\s*(.+)$", fm, re.M)
-    return m.group(1).strip() if m else None
+    lines = fm.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(rf"^{re.escape(key)}\s*:\s*(.*)$", line)
+        if not m:
+            continue
+        val = m.group(1).strip().strip('"').strip("'")
+        if val not in ("", ">", "|", ">-", "|-", ">+", "|+"):
+            return val
+        parts = []
+        for nxt in lines[i + 1:]:
+            if nxt.startswith((" ", "\t")):
+                parts.append(nxt.strip().lstrip("-").strip())
+            elif nxt.strip() == "":
+                continue
+            else:
+                break
+        return " ".join(p for p in parts if p) if parts else None
+    return None
 
 
 def body_text(path):
@@ -93,13 +136,13 @@ def body_text(path):
     return (text[m.end():] if m else text).strip()
 
 
-def collect_md(base, suffixes=(".md",)):
+def collect_md(base, suffixes=(".md",), only_name=None):
     out = []
     if not os.path.isdir(base):
         return out
     for dirpath, _, files in os.walk(base):
         for fn in sorted(files):
-            if any(fn.endswith(s) for s in suffixes):
+            if any(fn.endswith(s) for s in suffixes) and (only_name is None or fn == only_name):
                 out.append(os.path.join(dirpath, fn))
     return out
 
@@ -125,14 +168,22 @@ def summarize_settings(data):
             matchers = []
             for grp in entries:
                 m = grp.get("matcher", "*")
-                cmds = [h.get("command") or h.get("type", "?") for h in (grp.get("hooks") or [])]
+                cmds = []
+                for h in (grp.get("hooks") or []):
+                    tag = h.get("type", "command")
+                    if h.get("async"):
+                        tag += "(async)"
+                    if h.get("asyncRewake"):
+                        tag += "(asyncRewake)"
+                    cmds.append(h.get("command") or tag)
                 matchers.append({"matcher": m, "commands": cmds})
             s["hooks"][ev] = matchers
     for k in ("model", "env", "statusLine", "outputStyle", "includeCoAuthoredBy",
               "enableAllProjectMcpServers", "enabledMcpjsonServers", "disabledMcpjsonServers",
               "cleanupPeriodDays", "forceLoginMethod",
               "disableAllHooks", "allowedHttpHookUrls", "httpHookAllowedEnvVars",
-              "allowManagedHooksOnly", "effort", "sandbox"):
+              "allowManagedHooksOnly", "effortLevel", "maxEffortLevel", "modelSettings",
+              "sandbox"):
         if k in data:
             v = data[k]
             s[k] = v if k != "env" else {ek: ("***" if re.search(r"key|token|secret|pass", ek, re.I) else ev)
@@ -149,6 +200,10 @@ def scan_claude_md_imports(path):
                 body = f.read()
         except OSError:
             return []
+    # Claude Code skips code spans and fenced blocks when resolving @imports;
+    # strip them first so @Component / @mentions / examples don't false-positive.
+    body = re.sub(r"```.*?```", "", body, flags=re.S)
+    body = re.sub(r"`[^`\n]*`", "", body)
     return re.findall(r"@([\w~./-]+)", body)
 
 
@@ -168,6 +223,21 @@ def scan_project(root):
                                    "imports": scan_claude_md_imports(p) if name == "CLAUDE.md" else []})
     r["claude_mds"] = claude_mds
 
+    # Auto memory for this project: ~/.claude/projects/<derived>/memory/
+    # (<derived> maps the project path's non-alphanumerics to '-'; a git repo
+    # and all its worktrees share one directory, so this probe is best-effort.)
+    derived = re.sub(r"[^0-9A-Za-z]", "-", root)
+    mem_dir = os.path.join(os.path.expanduser("~"), ".claude", "projects", derived, "memory")
+    if os.path.isdir(mem_dir):
+        idx = os.path.join(mem_dir, "MEMORY.md")
+        r["auto_memory"] = {
+            "path": mem_dir,
+            "memory_md_size": os.path.getsize(idx) if os.path.isfile(idx) else None,
+            "topic_files": sorted(f for f in os.listdir(mem_dir) if f != "MEMORY.md"),
+        }
+    else:
+        r["auto_memory"] = None
+
     # instruction: .claude/rules/
     rules_dir = os.path.join(root, ".claude", "rules")
     r["rules_files"] = [{"path": os.path.relpath(p, root)} for p in collect_md(rules_dir)]
@@ -178,16 +248,22 @@ def scan_project(root):
         p = os.path.join(root, ".claude", name)
         if os.path.isfile(p):
             data, err = load_json(p)
-            settings[name] = {"error": err} if err else summarize_settings(data)
+            if data is None:
+                settings[name] = {"error": err}
+            else:
+                entry = summarize_settings(data)
+                if err:
+                    entry["warning"] = err
+                settings[name] = entry
         else:
             settings[name] = None
     r["project_settings"] = settings
 
     # Hooks/extend: commands, agents, skills, output styles
-    def md_group(sub, keys):
+    def md_group(sub, keys, only_name=None):
         base = os.path.join(root, ".claude", sub)
         out = []
-        for p in collect_md(base):
+        for p in collect_md(base, only_name=only_name):
             fm = parse_frontmatter(p)
             info = {"path": os.path.relpath(p, root)}
             for k in keys:
@@ -201,7 +277,8 @@ def scan_project(root):
 
     r["commands"] = md_group("commands", ("description", "argument-hint", "model", "allowed-tools"))
     r["agents"] = md_group("agents", ("name", "description", "tools", "model"))
-    r["skills"] = md_group("skills", ("name", "description", "allowed-tools"))
+    # Only <skill>/SKILL.md is a skill; references/ and scripts/ are payload.
+    r["skills"] = md_group("skills", ("name", "description", "allowed-tools"), only_name="SKILL.md")
     r["output_styles"] = md_group("output-styles", ("name", "description"))
 
     # loop.md customization file
@@ -212,11 +289,13 @@ def scan_project(root):
     p = os.path.join(root, ".mcp.json")
     if os.path.isfile(p):
         data, err = load_json(p)
-        if err:
+        if data is None:
             r["mcp"] = {"path": ".mcp.json", "error": err}
         else:
             servers = list((data.get("mcpServers") or {}).keys())
             r["mcp"] = {"path": ".mcp.json", "servers": servers}
+            if err:
+                r["mcp"]["warning"] = err
     else:
         r["mcp"] = None
 
@@ -255,7 +334,13 @@ def scan_user_level():
     p = os.path.join(cdir, "settings.json")
     if os.path.isfile(p):
         data, err = load_json(p)
-        u["user_settings"] = {"error": err} if err else summarize_settings(data)
+        if data is None:
+            u["user_settings"] = {"error": err}
+        else:
+            entry = summarize_settings(data)
+            if err:
+                entry["warning"] = err
+            u["user_settings"] = entry
     else:
         u["user_settings"] = None
 
@@ -271,9 +356,9 @@ def scan_user_level():
         u["claude_json"] = None
 
     # user commands/agents/skills/plugins
-    def md_group(sub, keys):
+    def md_group(sub, keys, only_name=None):
         out = []
-        for p in collect_md(os.path.join(cdir, sub)):
+        for p in collect_md(os.path.join(cdir, sub), only_name=only_name):
             fm = parse_frontmatter(p)
             info = {"path": p}
             for k in keys:
@@ -285,7 +370,7 @@ def scan_user_level():
 
     u["user_commands"] = md_group("commands", ("description",))
     u["user_agents"] = md_group("agents", ("name", "description"))
-    u["user_skills"] = md_group("skills", ("name", "description"))
+    u["user_skills"] = md_group("skills", ("name", "description"), only_name="SKILL.md")
     u["user_output_styles"] = md_group("output-styles", ("name", "description"))
     u["user_plugins_dir"] = os.path.isdir(os.path.join(cdir, "plugins"))
 
@@ -309,6 +394,8 @@ def build_matrix(r):
     for f in r["claude_mds"]:
         imp = f"（imports: {', '.join(f['imports'])}）" if f.get("imports") else ""
         C["memory"]["p"].append(f"`{f['path']}`{imp}")
+    if r.get("auto_memory"):
+        C["memory"]["p"].append(f"auto memory（{len(r['auto_memory']['topic_files'])} 个主题文件）")
     for f in r["rules_files"]:
         C["instruction"]["p"].append(f"`{f['path']}`")
     for f in r["agents"]:
@@ -334,7 +421,12 @@ def build_matrix(r):
                 cmds = "; ".join(c[:60] for c in m["commands"])
                 C["hook"]["p"].append(f"hook `{ev}` matcher=`{m['matcher']}` → {cmds}（{name}）")
     for f in r["commands"]:
-        C["command"]["p"].append(f"command `/{os.path.basename(f['path']).replace('.md','')}`")
+        # .claude/commands/sub/cmd.md surfaces as /sub:cmd (namespace form)
+        rel = f["path"]
+        prefix = ".claude/commands/"
+        if rel.startswith(prefix):
+            rel = rel[len(prefix):]
+        C["command"]["p"].append(f"command `/{rel[:-3].replace('/', ':')}`")
     for f in r["output_styles"]:
         C["hook"]["p"].append(f"output style `{f.get('name') or os.path.basename(f['path'])}`")
     if r["mcp"] and not r["mcp"].get("error"):
@@ -400,6 +492,8 @@ def settings_detail(name, s):
     if s.get("error"):
         L.append(f"- ⚠️ 解析失败：{s['error']}")
         return L
+    if s.get("warning"):
+        L.append(f"- ⚠️ 非严格 JSON：{s['warning']}")
     p = s["permissions"]
     L.append(f"- permissions：allow={p['allow']} deny={p['deny']} ask={p['ask']}" +
              (f"，defaultMode=`{p['defaultMode']}`" if p.get("defaultMode") else ""))
@@ -412,7 +506,7 @@ def settings_detail(name, s):
     for k in ("model", "env", "statusLine", "outputStyle", "enableAllProjectMcpServers",
               "enabledMcpjsonServers", "disabledMcpjsonServers", "includeCoAuthoredBy",
               "disableAllHooks", "allowedHttpHookUrls", "httpHookAllowedEnvVars",
-              "allowManagedHooksOnly"):
+              "allowManagedHooksOnly", "effortLevel", "maxEffortLevel", "modelSettings"):
         if k in s:
             L.append(f"- `{k}` = `{json.dumps(s[k], ensure_ascii=False)}`")
     if not p["allow"] and not p["deny"] and not s.get("hooks") and len(s.get("raw_keys", [])) <= 1:
@@ -426,13 +520,20 @@ def to_markdown(r):
 
     # ---- 明细章节：按 category 顺序（与矩阵七行一一对应） ----
 
-    L.append("\n## 1. memory（CLAUDE.md 记忆体系）")
+    L.append("\n## 1. memory（CLAUDE.md 与 auto memory）")
     if r["claude_mds"]:
         for f in r["claude_mds"]:
             imp = f" — imports: {', '.join(f['imports'])}" if f.get("imports") else ""
             L.append(f"- `{f['path']}` ({f['size']} bytes){imp}")
     else:
         L.append("- ❌ 无 CLAUDE.md")
+    am = r.get("auto_memory")
+    if am:
+        line = f"- auto memory：`{am['path']}`（MEMORY.md + {len(am['topic_files'])} 个主题文件）"
+        if am["memory_md_size"] is not None:
+            note = " ⚠️ 超 25KB 注入上限" if am["memory_md_size"] > 25 * 1024 else ""
+            line += f" — MEMORY.md {am['memory_md_size']} bytes{note}"
+        L.append(line)
 
     L.append("\n## 2. agent（Subagents .claude/agents/）")
     L.extend([f"- `{f['path']}`" + (f" — {f.get('name')}: {f.get('description','')[:60]}" if f.get("name") else "")
@@ -468,6 +569,8 @@ def to_markdown(r):
         L.append(f"- MCP ⚠️ 解析失败：{m['error']}")
     else:
         L.append(f"- MCP `.mcp.json` — servers: {', '.join(m['servers']) or '(空)'}")
+        if m.get("warning"):
+            L.append(f"- MCP ⚠️ 非严格 JSON：{m['warning']}")
 
     L.append("\n## 7. setting（settings.json 权限与行为约束）")
     for name, s in r["project_settings"].items():
@@ -484,6 +587,8 @@ def to_markdown(r):
         if us and not us.get("error"):
             p = us["permissions"]
             L.append(f"- user settings：allow={p['allow']} deny={p['deny']}，hooks={len(us.get('hooks') or {})} 类事件")
+            if us.get("warning"):
+                L.append(f"- user settings ⚠️ 非严格 JSON：{us['warning']}")
         elif us and us.get("error"):
             L.append(f"- user settings ⚠️ 解析失败：{us['error']}")
         cj = u.get("claude_json")
@@ -517,10 +622,12 @@ def to_markdown(r):
             all_settings.append(("user", us))
 
     for name, s in all_settings:
-        # effort
-        if s.get("effort"):
-            tag = " ⚠️ max 成本高" if str(s["effort"]).lower() == "max" else ""
-            le_items.append(f"- **effort** = `{s['effort']}`（{name}）{tag}")
+        # effort level (settings key is effortLevel; 'max' only exists on maxEffortLevel)
+        for ek in ("effortLevel", "maxEffortLevel"):
+            if s.get(ek):
+                le_items.append(f"- **{ek}** = `{s[ek]}`（{name}）")
+        if s.get("modelSettings"):
+            le_items.append(f"- **modelSettings** = `{json.dumps(s['modelSettings'], ensure_ascii=False)}`（{name}）")
         # sandbox
         if s.get("sandbox"):
             le_items.append(f"- **sandbox** = `{json.dumps(s['sandbox'], ensure_ascii=False)}`（{name}）")

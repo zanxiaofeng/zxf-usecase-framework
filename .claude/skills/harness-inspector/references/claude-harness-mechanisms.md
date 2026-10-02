@@ -8,7 +8,7 @@
 3. instruction：.claude/rules/
 4. skill：Skills
 5. command：Slash commands
-6. hook：正式 hooks 事件（30+ 种）、五种 hook 类型、async hooks、frontmatter hooks、output styles、MCP、plugins
+6. hook：正式 hooks 事件（33 种）、五种 hook 类型、async hooks、frontmatter hooks、output styles、MCP、plugins
 7. setting：settings.json 体系
 8. 加载顺序与优先级
 9. 边界
@@ -18,51 +18,87 @@
 
 | 类别 | Project（仓库级） | User（用户级） |
 |---|---|---|
-| **memory**<br>记忆文件 | CLAUDE.md（根/嵌套/@imports）、CLAUDE.local.md（已废弃）、AGENTS.md | ~/.claude/CLAUDE.md |
+| **memory**<br>记忆文件 | CLAUDE.md（根/嵌套/@imports）、CLAUDE.local.md（个人不入库）、AGENTS.md、auto memory（~/.claude/projects/<project>/memory/） | ~/.claude/CLAUDE.md |
 | **agent**<br>子代理 | .claude/agents/ | ~/.claude/agents/ |
 | **instruction**<br>指令规则 | .claude/rules/ | ~/.claude/rules/（先于项目规则加载，项目优先） |
 | **skill**<br>按需技能 | .claude/skills/ | ~/.claude/skills/ |
 | **command**<br>slash 命令 | .claude/commands/（`/cmd` 手动触发） | ~/.claude/commands/ |
-| **hook**<br>钩子/扩展 | settings 的 hooks 全部事件（30+ 种）、.claude/output-styles/、.mcp.json、skill/agent frontmatter hooks | user hooks、~/.claude/output-styles/、~/.claude.json mcpServers、~/.claude/plugins/ |
+| **hook**<br>钩子/扩展 | settings 的 hooks 全部事件（33 种）、.claude/output-styles/、.mcp.json、skill/agent frontmatter hooks | user hooks、~/.claude/output-styles/、~/.claude.json mcpServers、~/.claude/plugins/ |
 | **setting**<br>权限/约束 | .claude/settings.json（共享入库）、.claude/settings.local.json（个人不入库）：permissions/env/model/statusLine/disableAllHooks 等 | ~/.claude/settings.json：permissions/env/model |
 
 command 与 hook 的区别：command 是**人手动触发**的 prompt 模板（`/cmd`）；hook 是**事件自动触发**的机制（hooks 全部事件、常驻扩展如 MCP）。
 
-## 1. memory：CLAUDE.md 体系
+## 1. memory：CLAUDE.md 体系与 Auto memory
 
-- **项目 CLAUDE.md**：会话启动时自动注入；可放在仓库根或任意子目录（嵌套 CLAUDE.md 仅在访问该目录文件时按需加载）。
-- **@imports**：`@path/to/file` 语法导入其他文件（支持 `~` 家目录、相对路径，最多嵌套 5 层）；常见模式 `@README.md`、`@docs/git-instructions.md`。
-- **CLAUDE.local.md**：已废弃（deprecated），官方建议迁移到 @imports 或 settings.local.json。
-- **AGENTS.md**：跨工具通用标准，Claude Code 同样识别。
+### 1.1 CLAUDE.md 文件
+
+- **项目 CLAUDE.md**：会话启动时自动注入；可放仓库根、`.claude/CLAUDE.md` 或任意子目录
+  （嵌套 CLAUDE.md 仅在访问该目录文件时按需加载）；目录树自根向下拼接，越靠近启动目录越晚注入。
+- **@imports**：`@path/to/file` 语法导入其他文件（相对路径按**包含 import 的文件**解析；
+  最多递归 **4 跳**；反引号与 fenced code block 内的 `@` 不触发导入）；
+  常见模式 `@README.md`、`@docs/git-instructions.md`。项目文件 import 工作目录外的路径时首次需批准 external imports。
+- **CLAUDE.local.md**：个人项目级偏好，与 CLAUDE.md 同等加载，应加入 `.gitignore`
+  （Claude Code 首次写入该文件时会自动加入全局 git excludes）。
+- **AGENTS.md**：跨工具通用标准；Claude Code 默认仅在工作目录及以上**没有** CLAUDE.md / CLAUDE.local.md 时读取，
+  `/config` 的 Project instructions 可切换为 `claude-md-or-agents-md`（默认）/ `claude-md-and-agents-md` / `claude-md` / `managed-only`。
 - **用户记忆 ~/.claude/CLAUDE.md**：跨所有项目生效。
-- 诊断：`/memory` 命令可查看当前加载的记忆文件；`#` 前缀快速追加记忆。
-- 健康度：CLAUDE.md 建议 < 300 行，内容应是"非显而易见"的项目约定，不要重复代码自明的信息。
+- **Managed CLAUDE.md**：`/etc/claude-code/CLAUDE.md`（Linux）等组织级路径，或 managed-settings.json 的 `claudeMd` 键；
+  优先级最高，不可被 `claudeMdExcludes` 排除。
+- **claudeMdExcludes**：任意 settings 层可用，按绝对路径 glob 排除 monorepo 中无关的祖先 CLAUDE.md / rules。
+- 健康度：单个 CLAUDE.md 目标 **< 200 行**（超限有启动与 /status 警告；单文件 > 4 MiB 直接跳过加载；
+  多个各自不超限的文件合计超限同样警告）；内容应是"非显而易见"的项目约定，不要重复代码自明的信息。
+- 诊断：`/context` 查看当前会话实际加载的 memory 文件；`/memory` 浏览与编辑；
+  `/doctor prompt-audit` 审计过时/冲突指令（v2.1.283+）。
+
+### 1.2 Auto memory
+
+- Claude 自动记录的记忆，存放于 `~/.claude/projects/<project>/memory/`（同一 git 仓库的所有 worktree 共享），
+  由 `MEMORY.md` 索引 + 单主题文件组成。
+- 每会话自动注入 **MEMORY.md 前 200 行或 25KB**（先到为准）；主题文件按需读取；索引超限的写入会收到要求精简的错误。
+- 开关：`autoMemoryEnabled`（user/project settings）或 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`；
+  自托管环境默认关闭。让 Claude"记住 X"即写入 auto memory。
+- 审计 harness 时应盘点该目录：索引是否超限、内容是否与 CLAUDE.md 冲突。
 
 ## 2. agent：Subagents
 
-- 路径：`.claude/agents/*.md`（项目）、`~/.claude/agents/`（用户）。
-- 独立上下文的专职代理；frontmatter：`name`、`description`（决定何时自动委派）、
-  `tools`（白名单，省略=全部）、`model`。
+- 路径：`.claude/agents/*.md`（项目）、`~/.claude/agents/`（用户），递归扫描、就近工作目录优先。
+- 独立上下文的专职代理；frontmatter：`name`、`description`（两者必须，description 决定何时自动委派）、
+  `tools`（白名单，省略=全部）、`disallowedTools`、`model`（支持 `inherit`）、`permissionMode`、`maxTurns`、
+  `skills`、`mcpServers`、`hooks`、`memory`（user/project/local 持久记忆）、`background`、`omitClaudeMd`、
+  `effort`、`isolation: worktree` 等。
+- 限制：所有 agent 的 description 合计 > 15,000 tokens 触发启动警告；并发默认 20
+  （`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`）；嵌套默认 3 层。
+- 缺 `name`/`description`、YAML 解析失败的文件被**静默跳过**；用 `claude plugin validate .claude/agents` 校验。
 - 正文为空（只有 frontmatter）视为配置缺陷（形同虚设）。
 
 ## 3. instruction：.claude/rules/
 
 - 模块化规则目录，多个 .md 文件按主题拆分，全部自动注入（比单个超长 CLAUDE.md 更易维护）。
 - frontmatter 可用 `paths:` 做路径作用域（支持 `{ts,tsx}` brace 展开）。
-- **用户级 ~/.claude/rules/**：跨所有项目生效；先于项目规则加载（项目规则优先）；
-  支持 symlink 共享规则集（循环链接被检测处理）；
-  已知 bug：`paths:` 规则只匹配启动时 CWD 下的文件，`--add-dir` 不扩展匹配范围。
+- **用户级 ~/.claude/rules/**：跨所有项目生效；先于项目规则加载（项目规则更靠近上下文末端，
+  两套规则**互不覆盖**——冲突时 Claude 可能任选其一，应保持一致）；
+  支持 symlink 共享规则集（循环链接被检测处理；指向工作目录外的链接需先批准 external imports）；
+  `--add-dir` 添加的目录默认不加载记忆文件，设 `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` 可加载其 CLAUDE.md / rules / CLAUDE.local.md。
+- `paths:` 支持递归子目录与 brace 展开（如 `src/**/*.{ts,tsx}`），整个列表共享 1,000 个展开 pattern / 4 MiB 预算。
 
 ## 4. skill：Skills
 
 - 路径：`.claude/skills/<name>/SKILL.md`（项目）、`~/.claude/skills/`（用户）。
-- 按需加载的能力包；`description` 是触发面。
-- frontmatter 支持字段：`name`（必须，与目录名一致）、`description`（必须，≤1024 字符）、
-  `allowed-tools`（可选，限制 skill 激活时可用的工具）、`license`、`compatibility`、`metadata`。
-- **渐进式披露**：启动时仅加载所有 skill 的 name+description（~100 tokens/skill）；
+- 按需加载的能力包；`description` 是触发面（`description` + `when_to_use` 合计在 skill 列表中截断于
+  **1,536 字符**，关键用例放最前）。
+- frontmatter 字段**全部可选**：`name`（默认取目录名）、`description`（省略时取正文首个非空行）、
+  `when_to_use`、`allowed-tools`（**调用回合的工具权限预批准**，授权在下一条用户消息清除——
+  不是"限制可用工具"）、`disallowed-tools`（从工具池**移除**工具，限制语义用它）、
+  `disable-model-invocation` / `user-invocable`（控制谁能调用）、`model`、`effort`、
+  `context: fork`（在隔离子代理中执行）、`agent`、`background`、`hooks`（见 §6.5）、`paths`、
+  `shell`、`license`、`compatibility`、`metadata`。
+  跨工具通用字段仅 6 个：name / description / license / compatibility / metadata / allowed-tools
+  （claude.ai 上传、Skills API 等场景，其余字段会硬报错）。
+- **渐进式披露**：启动时仅加载所有 skill 的 name+description，listing 预算约为上下文窗口的 **1%**
+  （超出按最少调用的 skill 优先丢弃）；
   skill 被激活时加载完整 SKILL.md 正文；references/scripts/ 等辅助文件仅在需要时读取。
   建议正文 < 500 行，超长内容拆入 `references/` 子目录。
-- skill 和 agent 的 frontmatter 中可直接定义 hooks（见 §6.5），仅在组件激活时生效。
+  compaction 后每个 skill 重附最近一次调用的前 5,000 tokens，所有 skill 共享 25,000 token 预算。
 - 正文为空视为配置缺陷。
 
 ## 5. command：Slash commands
@@ -95,9 +131,11 @@ Hooks 是用户定义的 shell 命令、HTTP 端点、MCP 工具调用、LLM pro
 - 支持 **command / http / mcp_tool** 的事件：`ConfigChange`、`CwdChanged`、`DirectoryAdded`、`Elicitation`、
   `ElicitationResult`、`FileChanged`、`InstructionsLoaded`、`Notification`、`PostCompact`、`PreCompact`、
   `SessionEnd`、`StopFailure`、`SubagentStart`、`WorktreeCreate`、`WorktreeRemove`
-- 支持 **command / mcp_tool** 的事件：`SessionStart`、`Setup`
+- `SessionStart`：仅 **command / mcp_tool**（且 mcp_tool 在启动与 `--resume`/`--continue` 时被跳过，
+  仅 /clear、compaction 等后续触发时运行）
+- `Setup`：仅 **command**（mcp_tool hook 总是被跳过）
 
-### 6.2 Hook 事件（按生命周期分组，共 31 种）
+### 6.2 Hook 事件（按生命周期分组，共 33 种）
 
 | 分组 | 事件 | 时机 | 典型用途 |
 |---|---|---|---|
@@ -128,6 +166,8 @@ Hooks 是用户定义的 shell 命令、HTTP 端点、MCP 工具调用、LLM pro
 | | `FileChanged` | 受监视文件变更时（matcher: file basename） | 重载环境变量 |
 | **上下文压缩** | `PreCompact` | 压缩前（matcher: manual/auto） | 备份关键状态 |
 | | `PostCompact` | 压缩后（matcher: manual/auto） | 更新外部状态 |
+| **模型切换** | `PreModelSwitch` | 应用模型切换前，可阻断切换（matcher: 目标模型名） | 模型门禁、阻止切换 |
+| | `PostModelSwitch` | 模型切换后（含 Claude Code 自行恢复的切换） | 同步外部状态、日志 |
 | **Worktree** | `WorktreeCreate` | worktree 创建时（无 matcher） | 非 git VCS 支持 |
 | | `WorktreeRemove` | worktree 移除时（无 matcher） | 清理 |
 | **MCP** | `Elicitation` | MCP server 请求用户输入时（matcher: server name） | 程序化响应 |
@@ -137,18 +177,23 @@ Hooks 是用户定义的 shell 命令、HTTP 端点、MCP 工具调用、LLM pro
 
 - **matcher**：按事件匹配不同字段（tool_name、notification_type、agent_type、source 等）；
   支持正则匹配与精确匹配（含 `|` 或 `,` 分隔的备选列表）。
-- **`if` 字段**：单个 hook handler 可用 permission rule 语法（如 `"Bash(git *)"`、`"Edit(*.ts)"`）进一步过滤。
+- **`if` 字段**：单个 hook handler 用**一条** permission rule（如 `"Bash(git *)"`、`"Edit(*.ts)"`；
+  无 `&&`/`||`/列表语法）进一步过滤；仅工具类事件（`PreToolUse`/`PostToolUse`/`PostToolUseFailure`/
+  `PermissionRequest`/`PermissionDenied`）生效，其他事件带 `if` 的 hook **永不运行**。
 - **exit code**：0 = 成功（stdout 可能含 JSON 决策）；2 = 阻断（stderr 反馈给模型）；其他 = 非阻断错误。
 - **JSON output**：通过 stdout 输出 JSON 精细控制行为——`decision`（block）、`hookSpecificOutput`
   （permissionDecision: allow/deny/ask/defer、updatedInput、additionalContext 等）、`continue`（false 停止）、
-  `systemMessage`（面向用户）、`terminalSequence`（终端通知转义序列）。
+  `systemMessage`（面向用户）、`terminalSequence`（终端通知转义序列）；
+  `additionalContext` / `systemMessage` / 纯文本 stdout 上限 **10,000 字符**（超出落盘并替换为路径 + 前 2,000 字符预览）。
 - **路径占位符**：`${CLAUDE_PROJECT_DIR}`、`${CLAUDE_PLUGIN_ROOT}`、`${CLAUDE_PLUGIN_DATA}`。
 - 诊断：`/hooks` 命令查看已注册 hooks（只读浏览器，显示五种类型与来源标签）。
 
 ### 6.4 Async Hooks
 
-- **`async: true`**（仅 `type: "command"`）：hook 在后台执行，不阻塞 Claude；
+- **`async: true`**（仅 `type: "command"`）：hook 在后台执行，不阻塞 Claude；`timeout` **不被强制执行**；
   输出（`additionalContext`、`systemMessage`）在下一轮对话交付。
+- **`asyncRewake: true`**：后台执行，exit code 2 时**唤醒 Claude**——stderr（为空时取 stdout）
+  作为 system reminder 展示。
 - async hooks **不能阻断**或控制行为——触发动作已完成。
 - 适用于：部署、测试套件、外部 API 调用等长时间运行任务。
 - 非交互模式（`-p`）下 teardown 会终止未完成的 async hooks。
@@ -156,9 +201,14 @@ Hooks 是用户定义的 shell 命令、HTTP 端点、MCP 工具调用、LLM pro
 ### 6.5 Frontmatter Hooks（skill / agent 内嵌）
 
 - skill 和 agent 的 YAML frontmatter 中可直接定义 hooks，格式与 settings hooks 相同。
-- **仅在组件激活时生效**，组件结束后自动清理。
-- 所有 hook 事件均支持；subagent 的 `Stop` hooks 自动转换为 `SubagentStop`。
-- 安全要求：项目 subagent 的 frontmatter hooks 需先接受 workspace trust dialog。
+- **生命周期不同，勿混淆**：
+  - **skill hooks**：调用时注册，**持续到会话结束**（不随 skill 结束清理）；
+    `once: true`（仅 skill frontmatter 有效）在首次成功运行后移除该 hook。
+  - **subagent hooks**：仅在该 subagent 运行期间生效，结束后移除；
+    subagent 的 `Stop` hooks 自动转换为 `SubagentStop`。
+- 所有 hook 事件均支持。
+- 安全要求：项目 subagent 的 frontmatter hooks 需先接受 workspace trust dialog；
+  项目 skill hooks 在未受信任的 `-p` 运行中也会注册，但按 settings-file hooks 的信任规则生效。
 
 ### 6.6 Hook 来源与作用域
 
@@ -179,7 +229,7 @@ Hooks 跨层级**合并**而非替换。`disableAllHooks` 可禁用非 managed h
 
 | 设置键 | 说明 |
 |---|---|
-| `disableAllHooks` | 全局禁用所有 hooks（managed hooks 需在 managed settings 中设置才可禁用） |
+| `disableAllHooks` | 一并关闭 hooks、自定义 statusLine 与 `@` 文件建议命令（按 settings 优先级取值，项目层可覆盖用户层；managed hooks 需在 managed settings 中设置才可禁用） |
 | `allowedHttpHookUrls` | HTTP hook URL 白名单（在任意 settings 层级定义即生效，跨所有来源） |
 | `httpHookAllowedEnvVars` | HTTP hook header 环境变量插值白名单 |
 | `allowManagedHooksOnly` | 企业管理员使用，阻止 user/project/plugin hooks |
@@ -212,10 +262,12 @@ Hooks 跨层级**合并**而非替换。`disableAllHooks` 可禁用非 managed h
 | `permissions.allow` | 免确认放行的工具规则，如 `Bash(npm run test:*)`、`Read(./src/**)` |
 | `permissions.deny` | 硬性禁止，如 `Bash(rm -rf*)`、`Read(./.env*)`、`WebFetch` |
 | `permissions.ask` | 强制每次询问 |
-| `permissions.defaultMode` | `default` / `acceptEdits` / `plan` / `bypassPermissions`（高危，仅限容器） |
+| `permissions.defaultMode` | `default` / `acceptEdits` / `plan` / `auto` / `dontAsk` / `bypassPermissions`（高危）；v2.1.257+ 起 `auto` 与 `bypassPermissions` 从 project/local 文件**不生效**（须 user/managed/`--permission-mode`） |
 | `permissions.additionalDirectories` | 允许访问工作区外的目录 |
 | `env` | 注入到每个会话的环境变量（含 `ANTHROPIC_*`、`CLAUDE_CODE_*` 开关） |
-| `model` | 锁定模型 |
+| `model` | 锁定模型（`availableModels` 可约束可选范围） |
+| `effortLevel` / `maxEffortLevel` / `modelSettings` | 推理投入档位（low/medium/high/**xhigh**）与上限（low/medium/high/xhigh/**max**，max=不设上限，多层取最低，v2.1.267+）；`/effort` 的持久化写入 `modelSettings` |
+| `permissions.disableBypassPermissionsMode` | 禁用 bypassPermissions 模式（企业管控） |
 | `statusLine` | 自定义状态栏命令 |
 | `includeCoAuthoredBy` | 提交署名开关 |
 | `enabledMcpjsonServers` / `disabledMcpjsonServers` | 显式启用/禁用 .mcp.json 中的 server |
@@ -238,7 +290,7 @@ settings 优先级（高 → 低）：
 4. `.claude/settings.json`
 5. `~/.claude/settings.json`
 
-deny 规则跨层级合并后仍优先于 allow；rules 加载顺序：用户级 → 项目级（项目优先）。
+deny 规则跨层级合并后仍优先于 allow；rules 加载顺序：用户级先加载、项目级随后（互不覆盖，冲突时 Claude 任选其一）。
 hooks 跨层级合并而非替换；`disableAllHooks` 无法禁用 managed hooks。
 
 ## 9. 边界
@@ -263,6 +315,8 @@ hooks 跨层级合并而非替换；`disableAllHooks` 无法禁用 managed hooks
 ## 官方来源
 
 - Claude Code settings — https://code.claude.com/docs/en/settings
+- Claude Code settings reference（全量键名）— https://code.claude.com/docs/en/settings-reference
+- Claude Code environment variables — https://code.claude.com/docs/en/env-vars
 - Claude Code memory — https://code.claude.com/docs/en/memory
 - Claude Code hooks（完整事件参考）— https://code.claude.com/docs/en/hooks
 - Claude Code hooks guide — https://code.claude.com/docs/en/hooks-guide
@@ -296,11 +350,12 @@ Loop Engineering 指控制和优化 AI Agent 在其 agentic loop（推理→行�
 
 | 设置 | 默认 | 影响 |
 |---|---|---|
-| `effort` | medium | extended thinking 预算（low/medium/high/max），max 约为 medium 的 20× 成本 |
-| `BASH_MAX_TIMEOUT_MS`（env） | — | Bash 命令最大超时（毫秒） |
-| `BASH_DEFAULT_TIMEOUT_MS`（env） | — | Bash 命令默认超时（毫秒） |
-| hook `timeoutSec` | 600（sync）/ 600（async） | hook 执行超时（秒） |
-| SessionEnd hook timeout | 1.5s | 会话结束 hook 超时 |
+| `effortLevel` | 未设置（继承会话） | 推理投入档位（low/medium/high/xhigh）；skill/agent frontmatter 的 `effort` 另有 max 档 |
+| `maxEffortLevel` | 未设置 | 档位上限（low/medium/high/xhigh/max，**max = 不设上限**；多层取最低，v2.1.267+） |
+| `BASH_MAX_TIMEOUT_MS`（env） | 600000（10 分钟） | Bash/PowerShell 命令最大超时（毫秒）；生效上限取它与 `BASH_DEFAULT_TIMEOUT_MS` 的较大值 |
+| `BASH_DEFAULT_TIMEOUT_MS`（env） | 120000（2 分钟） | Bash/PowerShell 命令默认超时（毫秒） |
+| hook `timeout`（秒） | command/http/mcp_tool 600；prompt 30；agent 60；`UserPromptSubmit`/`PreModelSwitch`/`PostModelSwitch` 降为 30；`MessageDisplay` 降为 10 | hook 执行超时；**async hooks 的 timeout 不强制执行** |
+| SessionEnd hook | 共享 1.5 秒预算 | 可被更长的每-hook `timeout` 提升至最多 60 秒 |
 
 ### C.3 循环自治：permissions 与 sandbox
 
@@ -323,7 +378,8 @@ Loop Engineering 指控制和优化 AI Agent 在其 agentic loop（推理→行�
 
 - **Stop hook**：主 agent 结束时触发，可 `decision: "block"` + `reason` 强制继续。
 - **SubagentStop hook**：子 agent 结束时触发，同样可 block。
-- **runaway guard**：连续 8 次 `block` 后 CLI 自动放行，防止无限循环。
+- **runaway guard**：连续 8 次 `block`（无进展）后 CLI 自动放行，防止无限循环；
+  可用 `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` 调高上限；hook 脚本应检查输入中的 `stop_hook_active` 提前放行。
 - **StopFailure hook**：API 错误导致结束时触发（非正常 Stop）。
 
 ### C.6 后台执行

@@ -4,9 +4,10 @@ description: >
   盘点并报告当前项目在 Claude Code 上的 harness setting（项目级与用户级配置），
   以「Scope（User/Project）× Category（memory/agent/instruction/skill/command/hook/setting 七类）」矩阵表输出。
   覆盖：CLAUDE.md（含嵌套与 @imports）、.claude/rules/、settings.json 与 settings.local.json
-  （permissions/hooks/env/model/statusline）、hooks 全部事件（30+ 种，含 command/http/mcp_tool/prompt/agent
+  （permissions/hooks/env/model/statusline）、hooks 全部事件（33 种，含 command/http/mcp_tool/prompt/agent
   五种 hook 类型，async hooks，以及 skill/agent frontmatter 内嵌 hooks）、.claude/commands/、.claude/agents/、
-  .claude/skills/、.claude/output-styles/、.mcp.json，以及用户级 ~/.claude/* 与 ~/.claude.json。
+  .claude/skills/、.claude/output-styles/、.mcp.json、auto memory（~/.claude/projects/<project>/memory/），
+  以及用户级 ~/.claude/* 与 ~/.claude.json。
   当用户询问"当前项目的 Claude Code 配置/记忆/权限/hooks"、"排查 Claude Code 没有遵循项目规范"、
   "审计 .claude 目录"、"对比 Claude Code 与 GitHub Copilot 的 harness 机制"时使用本 skill。
 allowed-tools: Read, Grep, Glob, Bash
@@ -23,7 +24,7 @@ allowed-tools: Read, Grep, Glob, Bash
 1. 运行扫描脚本（确定性操作，不要手工逐个 find）：
 
    ```bash
-   python3 <skill_dir>/scripts/scan_claude_harness.py <项目根目录> --md --user-level
+   python3 ${CLAUDE_SKILL_DIR}/scripts/scan_claude_harness.py <项目根目录> --md --user-level
    ```
 
    不需要用户级扫描时去掉 `--user-level`；需要原始数据时省略 `--md` 输出 JSON。
@@ -38,26 +39,32 @@ allowed-tools: Read, Grep, Glob, Bash
    - deny 规则是否覆盖了危险命令（`Bash(rm -rf*)`、`Read(./.env*)` 等）；
    - hooks 的 matcher 是否过宽（`*` 匹配所有工具会显著拖慢会话）；
    - hook 是否使用了高级类型（`http`、`prompt`、`agent`、`mcp_tool`），确认其安全配置；
-   - `disableAllHooks` 是否被误设为 `true`（所有 hooks 静默失效，且无法禁用 managed hooks）；
+   - settings 文件是否为严格 JSON（含注释或尾逗号时 Claude Code 报 Settings Error 并跳过该文件，脚本以 ⚠️ 标出）；
+   - `disableAllHooks` 是否被误设为 `true`（hooks、自定义 statusLine 与 @ 文件建议命令一并静默失效，且无法禁用 managed hooks）；
    - `allowedHttpHookUrls` / `httpHookAllowedEnvVars` 是否合理配置（HTTP hook 安全）；
-   - CLAUDE.md 是否过长（> 几百行会稀释上下文）；@import 引用的文件是否存在；
+   - CLAUDE.md 是否超过 200 行（官方目标值，超限有启动与 /status 警告；单文件 > 4 MiB 直接跳过）；
+     @import（最多递归 4 跳）引用的文件是否存在；
+   - auto memory 索引（`~/.claude/projects/<project>/memory/MEMORY.md`）是否超过 200 行 / 25KB 注入上限；
    - `.claude/agents` / `.claude/skills` 正文为空（形同虚设）；
-   - agent/skill 的 frontmatter 中是否内嵌了 hooks（frontmatter hooks 仅在组件激活时生效，容易被忽略）；
+   - agent/skill 的 frontmatter 中是否内嵌了 hooks（skill hooks 调用后**持续整个会话**、subagent hooks 仅运行期间生效，容易被忽略）；
    - `permissions.defaultMode` 是否设为 `bypassPermissions`（高风险，仅容器环境可接受）；
    - `.mcp.json` 的 server 是否需要 `enabledMcpjsonServers` 显式启用。
    - **Loop Engineering**（参照报告 §9 与 `references` 附录 C）：
-     `effort` 是否设为 `max`（高成本，约 20× medium）；`permissions.defaultMode` 是否为 `bypassPermissions`（循环全自动）；
+     `effortLevel` 档位与 `maxEffortLevel` 上限（settings 最高档为 xhigh；`max` 仅作为 maxEffortLevel 取值、表示不设上限）；
+     `permissions.defaultMode` 是否为 `bypassPermissions`（循环全自动；v2.1.257+ 起该值从 project/local 文件不生效）；
      `sandbox` 是否启用（未启用时 agent 无限制访问文件系统/网络）；`CLAUDE_CODE_DISABLE_CRON` 是否为 `1`（`/loop` 不可用）；
-     `loop.md` 是否存在（自定义循环行为）；`BASH_MAX_TIMEOUT_MS` 是否设置（未设时 Bash 无超时上限）。
+     `loop.md` 是否存在（自定义循环行为）；`BASH_MAX_TIMEOUT_MS`/`BASH_DEFAULT_TIMEOUT_MS`
+     （未设时 Bash 默认超时 2 分钟、上限 10 分钟，并非无上限）。
 
 ## 分类法（矩阵依据，七类）
 
-- **memory**：CLAUDE.md（项目/嵌套/用户，含 @imports）——自动注入的记忆文件
+- **memory**：CLAUDE.md（项目/嵌套/用户，含 @imports，最多递归 4 跳）、auto memory
+  （~/.claude/projects/<project>/memory/，MEMORY.md 索引前 200 行/25KB 自动注入）——自动注入的记忆文件
 - **agent**：.claude/agents/、~/.claude/agents/——子代理
 - **instruction**：.claude/rules/、~/.claude/rules/——指令规则文件（用户级先加载，项目级优先）
 - **skill**：.claude/skills/、~/.claude/skills/——按需加载技能
 - **command**：.claude/commands/、~/.claude/commands/——手动触发的 slash commands（`/cmd`）
-- **hook**：settings 的 hooks 全部事件（30+ 种）、五种 hook 类型（command/http/mcp_tool/prompt/agent）、
+- **hook**：settings 的 hooks 全部事件（33 种）、五种 hook 类型（command/http/mcp_tool/prompt/agent）、
   async hooks、skill/agent frontmatter hooks、output styles、MCP servers——触发与扩展
 - **setting**：settings.json 的 permissions（allow/deny/ask/defaultMode）、env、model、statusLine、
   disableAllHooks、HTTP hook 安全配置——行为约束与权限
