@@ -29,6 +29,7 @@ public final class LoggingStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         LoggingConfig config = StepConfigs.bind(definition, LoggingConfig.class);
         String name = definition.nameOr("logging");
+        evaluator.precompileForStep(name, config.getMessage());   // 模板语法错误启动期 fail-fast
         Logger log = LoggerFactory.getLogger("usecase." + definition.useCaseId() + ".step." + name);
         return new LoggingStep(name, config.getMessage(), config.getLevel(), config.isLogContext(), evaluator, log);
     }

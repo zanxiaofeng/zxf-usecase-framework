@@ -34,6 +34,11 @@ import com.example.usecase.framework.core.UseCaseRegistry;
  *
  * <p>异常语义与子用例 step 一致：子用例的领域异常沿 {@link StepExecutionException} 包装链原样上抛。</p>
  *
+ * <p><b>运行期深度保护</b>：装配期的循环引用检测只覆盖 YAML 引用图（type=usecase 的 ref）；
+ * Java 编程调用可形成图中不可见的递归（如 ref Step Bean 内回调 invoker 再入自身用例）。
+ * 每个调用经 {@link #guarded(Supplier)} 以 ThreadLocal 深度计数守卫，超过
+ * {@link #MAX_INVOCATION_DEPTH} 抛 {@link IllegalStateException}（明确报错优于 StackOverflowError）。</p>
+ *
  * <p><b>为何注入 Supplier 而非 Registry 本体</b>：引用 invoker 的自定义 Step Bean 会在装配期
  * 被 registry 的创建过程触及（registry → ref step → client → invoker），若 invoker 直接持有
  * registry 会形成 Bean 创建循环；延迟解析（首次调用时解析并缓存）切断该循环。</p>
@@ -41,6 +46,12 @@ import com.example.usecase.framework.core.UseCaseRegistry;
 @RequiredArgsConstructor
 @Slf4j
 public final class UseCaseInvoker {
+
+    /** 嵌套调用深度上限：正常编排远达不到（demo 最深 2 层）；超出基本可断定编程递归 */
+    static final int MAX_INVOCATION_DEPTH = 32;
+
+    /** 当前线程的用例调用深度（跨 YAML 嵌套与 Java 调用统一计数；管道本身由 root execute 起算 0） */
+    private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
 
     private final Supplier<UseCaseRegistry> registrySupplier;
     private volatile @Nullable UseCaseRegistry registry;
@@ -89,13 +100,15 @@ public final class UseCaseInvoker {
     /** 在指定父上下文中共享调用：vars/biz 互通，父 payload 执行后恢复。 */
     public @Nullable Object invoke(String useCaseId, @Nullable Object input, StepContext parentContext) {
         UseCase target = registry().require(useCaseId);
-        Object parentPayload = parentContext.getPayload();
-        parentContext.setPayload(input);
-        try {
-            return target.execute(parentContext);
-        } finally {
-            parentContext.setPayload(parentPayload);
-        }
+        return guarded(() -> {
+            Object parentPayload = parentContext.getPayload();
+            parentContext.setPayload(input);
+            try {
+                return target.execute(parentContext);
+            } finally {
+                parentContext.setPayload(parentPayload);
+            }
+        });
     }
 
     /** 隔离调用（基于当前上下文；管道外退化为独立调用）。 */
@@ -109,18 +122,18 @@ public final class UseCaseInvoker {
         UseCase target = registry().require(useCaseId);
         // biz 是 Map 拷贝而 MDC 是线程级单例：子管道内 starter 的 MDC 写入须随返回回滚，
         // 否则父管道后续日志输出子用例的 biz 值
-        return MdcScopes.withRestoration(() -> {
+        return guarded(() -> MdcScopes.withRestoration(() -> {
             StepContext childContext = parentContext.newChildContext();
             childContext.inheritBizFrom(parentContext);
             childContext.setPayload(input);
             return target.execute(childContext);
-        });
+        }));
     }
 
     /** 独立调用：全新上下文（无入站请求），自动种子化 traceId（biz 区），管道外场景使用；MDC 现场返回时恢复。 */
     public @Nullable Object invokeStandalone(String useCaseId, @Nullable Object input) {
         UseCase target = registry().require(useCaseId);
-        return MdcScopes.withRestoration(() -> {
+        return guarded(() -> MdcScopes.withRestoration(() -> {
             StepContext context = StepContext.standalone();
             StepContext current = StepContextHolder.current();
             if (current != null) {
@@ -133,6 +146,26 @@ public final class UseCaseInvoker {
             context.putBiz(StepContext.TRACE_ID_KEY, UUID.randomUUID().toString());
             context.setPayload(input);
             return target.execute(context);
-        });
+        }));
+    }
+
+    /**
+     * 调用深度守卫：装配期环检测只覆盖 YAML 引用图，Java 编程调用（ref Step Bean 内回调
+     * invoker）可形成图中不可见的递归。超出上限抛 {@link IllegalStateException}
+     * （明确报错优于耗尽栈后的 StackOverflowError）；finally 保证异常路径深度归零。
+     */
+    private <T> @Nullable T guarded(Supplier<T> action) {
+        int depth = DEPTH.get();
+        if (depth >= MAX_INVOCATION_DEPTH) {
+            throw new IllegalStateException(
+                    "usecase invocation depth exceeds %d — probable circular reference via programmatic invoke"
+                            .formatted(MAX_INVOCATION_DEPTH));
+        }
+        DEPTH.set(depth + 1);
+        try {
+            return action.get();
+        } finally {
+            DEPTH.set(depth);
+        }
     }
 }

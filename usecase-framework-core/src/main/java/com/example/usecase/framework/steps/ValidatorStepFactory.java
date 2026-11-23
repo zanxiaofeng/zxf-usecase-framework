@@ -1,5 +1,7 @@
 package com.example.usecase.framework.steps;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,6 +11,9 @@ import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.util.StringUtils;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -49,18 +54,47 @@ public final class ValidatorStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         ValidatorConfig config = StepConfigs.bind(definition, ValidatorConfig.class);
         String name = definition.nameOr(TYPE);
+        evaluator.precompileForStep(name, config.getExpression(), config.getTarget());   // 语法错误启动期 fail-fast
 
         Schema schema = null;
         if (config.getSchema() != null && !config.getSchema().isEmpty()) {
-            try {
-                JsonNode schemaNode = objectMapper.valueToTree(normalizeConfigValue(config.getSchema()));
-                schema = SCHEMA_REGISTRY.getSchema(schemaNode);
-            } catch (Exception e) {
-                throw new UseCaseAssemblyException("step [%s]: invalid JSON schema: %s".formatted(name, e.getMessage()), e);
-            }
+            schema = compileSchema(name, normalizeConfigValue(config.getSchema()));
+        } else if (StringUtils.hasText(config.getSchemaRef())) {
+            // 独立资源直读 JSON：不经属性绑定，无「全数字键 Map 被还原为 List」的失真，
+            // 含数字键对象的 schema（如 {"const":{"0":"a"}}）走此通道
+            schema = compileSchema(name, loadSchemaResource(name, config.getSchemaRef()));
         }
         return new ValidatorStep(name, config.getTarget(), config.getExpression(), schema, config.getMessage(),
                 config.getErrorCode(), evaluator, objectMapper);
+    }
+
+    private Schema compileSchema(String stepName, Object normalizedSchema) {
+        try {
+            return SCHEMA_REGISTRY.getSchema(objectMapper.valueToTree(normalizedSchema));
+        } catch (Exception e) {
+            throw new UseCaseAssemblyException(
+                    "step [%s]: invalid JSON schema: %s".formatted(stepName, e.getMessage()), e);
+        }
+    }
+
+    /** 从 classpath 读取 JSON Schema 资源（schemaRef）：缺失/非对象结构/解析失败均装配期 fail-fast */
+    private Map<String, Object> loadSchemaResource(String stepName, String schemaRef) {
+        ClassPathResource resource = new ClassPathResource(schemaRef);
+        if (!resource.exists()) {
+            throw new UseCaseAssemblyException(
+                    "step [%s]: schemaRef resource not found on classpath: %s".formatted(stepName, schemaRef));
+        }
+        try (InputStream in = resource.getInputStream()) {
+            JsonNode node = objectMapper.readTree(in);
+            if (!node.isObject()) {
+                throw new UseCaseAssemblyException(
+                        "step [%s]: schemaRef resource [%s] must contain a JSON object".formatted(stepName, schemaRef));
+            }
+            return objectMapper.treeToValue(node, new TypeReference<Map<String, Object>>() { });
+        } catch (IOException e) {
+            throw new UseCaseAssemblyException(
+                    "step [%s]: failed to read schemaRef resource [%s]: %s".formatted(stepName, schemaRef, e.getMessage()), e);
+        }
     }
 
     /**

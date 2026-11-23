@@ -42,6 +42,7 @@ public final class EventPublisherStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         EventPublisherConfig config = StepConfigs.bind(definition, EventPublisherConfig.class);
         String name = definition.nameOr(TYPE);
+        evaluator.precompileForStep(name, config.event());   // 语法错误启动期 fail-fast
         return new EventPublisherStep(name, config.event(), resolvePublisher(name, config.publisher()), evaluator);
     }
 

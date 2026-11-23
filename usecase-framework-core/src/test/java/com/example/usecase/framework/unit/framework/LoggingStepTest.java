@@ -46,6 +46,26 @@ class LoggingStepTest {
     }
 
     @Test
+    void defaultMessageLogsSummaryOnlyWithoutValues() {
+        // 未配置 message 时打摘要（payload 类型 + vars/biz 键集），不输出值——
+        // 与 usecase.trace / dataflow.record 的「只记键不记值」隐私基线一致；值输出须显式配置
+        Map<String, Object> config = new LinkedHashMap<>();   // 无 message
+        Step step = factory.create(new StepDefinition("logCredit", "logging", null, config)
+                .withUseCaseId("testUc"));
+        StepContext context = StepContext.standalone();
+        context.setPayload(Map.of("secret", "sensitive-value"));
+        context.putVar("credit", Map.of("score", 760));
+        context.putBiz("businessId", "u1");
+
+        step.execute(context);
+
+        assertThat(appender.list).hasSize(1);
+        String formatted = appender.list.get(0).getFormattedMessage();
+        assertThat(formatted).contains("payload=Map").contains("vars keys=[credit]").contains("biz keys=[businessId]");
+        assertThat(formatted).doesNotContain("sensitive-value").doesNotContain("760").doesNotContain("u1");
+    }
+
+    @Test
     void rendersMessageTemplateWithBizAndVars() {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("level", "INFO");

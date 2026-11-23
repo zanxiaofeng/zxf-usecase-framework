@@ -125,6 +125,28 @@ class UseCaseDefinitionValidationTest {
                 .anySatisfy(violation -> assertThat(violation.getPropertyPath().toString()).startsWith("errorMappings"));
     }
 
+    @Test
+    void errorMappingSuccessStatus_isRejected() {
+        // 错误映射不得配置 2xx：错误响应配成功状态码会让客户端按成功语义处理错误信封
+        UseCaseProperties properties = new UseCaseProperties(List.of(), Map.of("com.example.SomeException", 200),
+                true, new UseCaseProperties.Trace(false, false), new UseCaseProperties.Dataflow(false));
+
+        assertThat(validator.validate(properties))
+                .anySatisfy(violation -> assertThat(violation.getPropertyPath().toString()).startsWith("errorMappings"));
+    }
+
+    @Test
+    void endpointStatusOutsideSuccessRange_isRejected() {
+        // endpoint.status 是成功路径状态：限 200–299（4xx/5xx 属错误映射辖区，3xx 需 Location 头与信封冲突）
+        UseCaseDefinition definition = new UseCaseDefinition("demo", null, false,
+                new UseCaseDefinition.Endpoint(HttpMethod.GET, "/api/x", 404),
+                List.of(step()));
+
+        assertThat(validator.validate(propertiesOf(definition)))
+                .anySatisfy(violation -> assertThat(violation.getPropertyPath().toString())
+                        .endsWith("endpoint.status"));
+    }
+
     private static StepDefinition step() {
         return new StepDefinition(null, "logging", null, Map.of());
     }

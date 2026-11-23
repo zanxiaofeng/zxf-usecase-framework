@@ -61,8 +61,22 @@ public final class HttpRequesterStepFactory implements StepFactory {
             authHandler.validate(authOptions);
         }
 
+        // 表达式值（uriVariables / headers 的字符串值 / body）装配期语法预解析；url 是 ${} 占位符
+        // 与 {var} URI 模板的混合、非 SpEL，不在其列
+        evaluator.precompileForStep(name, stringValuesOf(config.getUriVariables()));
+        evaluator.precompileForStep(name, stringValuesOf(config.getHeaders()));
+        evaluator.precompileForStep(name, config.getBody());
+
         return new HttpRequesterStep(name, config.getMethod(), config.getUrl(), config.getUriVariables(),
                 config.getHeaders(), config.getBody(), new HttpRequesterStep.AuthSpec(authHandler, authOptions), config.getAs(),
                 restClient, evaluator);
+    }
+
+    /** 提取 Map 值中的字符串元素（header/uriVariable 的值约定为字符串/表达式，非字符串原样跳过） */
+    private static String[] stringValuesOf(Map<String, Object> values) {
+        return values.values().stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toArray(String[]::new);
     }
 }

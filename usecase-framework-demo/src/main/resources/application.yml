@@ -98,7 +98,7 @@ usecase:
     #   → logging → encoder → 自定义 ref step → dataSaver
     # ---------------------------------------------------------------
     - id: getUserProfile
-      description: 查询用户 → 调下游信用服务 → 信用准入校验 → 记录日志 → 编码标识 → 合并画像 → 保存快照
+      description: 查询用户 → 调下游信用服务 → 信用准入校验 → 记录日志 → 编码标识 → 合并画像（只读聚合，写操作见 createUserSnapshot）
       endpoint:
         method: GET
         path: /api/v1/users/{id}/profile
@@ -146,11 +146,9 @@ usecase:
             source: "#biz.businessId"
             as: encodedUserId          # 旁路输出，供 mergeProfile 引用
         - name: mergeProfile
-          ref: userProfileTransformer  # 引用自定义 Step Bean（type=usecase 之外，ref 与 type 二选一）
-        - name: saveSnapshot
-          type: dataSaver
-          config:
-            expression: "@profileSnapshotRepository.save(#payload)"
+          ref: userProfileTransformer  # 引用自定义 Step Bean（type=usecase 之外，ref 与 type 二选一）——管道收尾，画像随 ApiResponse 返回
+          # HTTP 安全方法（GET）语义：只读聚合、不落业务数据（写快照见 POST /api/v1/user-snapshots）；
+          # dataSaver 若需在 GET 管道演示，仅限可重复执行的非业务创建（如缓存刷新）并须显式注明
 
     # ---------------------------------------------------------------
     # 用例三：按 token 查询用户（starter → decoder → 子用例调用）

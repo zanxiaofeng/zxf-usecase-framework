@@ -64,9 +64,13 @@ public class UseCaseDefinition {
         @NotBlank
         private String path;
 
-        /** 成功状态码，缺省 200（YAML 绑定期拒绝非法范围） */
-        @Min(100)
-        @Max(599)
+        /**
+         * 成功状态码，缺省 200（YAML 绑定期拒绝非法范围）。
+         * 限 200–299：这是成功路径的响应状态，4xx/5xx 属错误映射（errorMappings）辖区；
+         * 204/304 与 ApiResponse 信封（必有 body）冲突，装配期由 UseCaseAssembler 拒绝。
+         */
+        @Min(200)
+        @Max(299)
         private int status = 200;
     }
 }

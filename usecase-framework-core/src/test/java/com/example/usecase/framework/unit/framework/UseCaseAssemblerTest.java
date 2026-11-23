@@ -58,6 +58,38 @@ class UseCaseAssemblerTest {
         return new StepDefinition("start", "starter", null, Map.of("keys", keys));
     }
 
+    @Test
+    void duplicateStepNameWithinUseCaseFails() {
+        // step 名是异常定位与数据链声明簿的键：同用例内重名 fail-fast（显式名与默认名都算）
+        UseCaseDefinition invalid = new UseCaseDefinition("u1", null, false, endpoint(),
+                List.of(loadStep(), loadStep()));   // 两个显式名同为 "load"
+        assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("duplicate step name 'load'");
+    }
+
+    @Test
+    void duplicateEndpointAcrossUseCasesFails() {
+        // 函数式路由按声明顺序匹配：重复 method+path 不会报错而是静默遮蔽，装配期拦截
+        UseCaseDefinition first = new UseCaseDefinition("u1", null, false, endpoint(), List.of(loadStep()));
+        UseCaseDefinition second = new UseCaseDefinition("u2", null, false,
+                new UseCaseDefinition.Endpoint(HttpMethod.GET, "/x", 200), List.of(loadStep()));
+        assertThatThrownBy(() -> assembler().assemble(List.of(first, second)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("duplicate endpoint")
+                .hasMessageContaining("GET /x");
+    }
+
+    @Test
+    void conflictingEnvelopeStatusFails() {
+        // 204/304 约定无响应体，与 ApiResponse 信封（必有 body）冲突
+        UseCaseDefinition invalid = new UseCaseDefinition("u1", null, false,
+                new UseCaseDefinition.Endpoint(HttpMethod.POST, "/x", 204), List.of(loadStep()));
+        assertThatThrownBy(() -> assembler().assemble(List.of(invalid)))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("204");
+    }
+
     /** 含 starter 工厂的装配器（starter 步骤需走第三遍构建） */
     private UseCaseAssembler assemblerWithStarter() {
         return new UseCaseAssembler(new StaticListableBeanFactory(), assemblerWithStarterFactories());

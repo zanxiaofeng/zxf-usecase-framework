@@ -94,13 +94,18 @@ public final class UseCaseAssembler {
     }
 
     public UseCaseRegistry assemble(List<UseCaseDefinition> definitions) {
-        // 第一遍：定义校验 + id 收集（非空且唯一）
+        // 第一遍：定义校验 + id 收集（非空且唯一）+ step 名唯一 + endpoint 唯一
         Set<String> ids = new LinkedHashSet<>();
+        Set<String> endpoints = new HashSet<>();
         for (UseCaseDefinition definition : definitions) {
             validateUseCase(definition);
             validateStarterSteps(definition);
+            validateStepNamesUnique(definition);
             if (!ids.add(definition.getId())) {
                 throw new UseCaseAssemblyException("duplicate usecase id: " + definition.getId());
+            }
+            if (!definition.isShared()) {
+                registerEndpoint(definition, endpoints);
             }
         }
         // 第二遍：子用例引用存在性 + 循环引用检测
@@ -182,6 +187,46 @@ public final class UseCaseAssembler {
             throw new UseCaseAssemblyException(
                     "usecase [%s]: endpoint.method [%s] is not a standard HTTP method (expected one of %s)"
                             .formatted(definition.getId(), endpoint.getMethod(), STANDARD_HTTP_METHODS));
+        }
+        if (endpoint.getStatus() == 204 || endpoint.getStatus() == 304) {
+            // 204/304 约定无响应体，与 ApiResponse 信封（必有 body）冲突
+            throw new UseCaseAssemblyException(
+                    "usecase [%s]: endpoint.status %d conflicts with the ApiResponse envelope (body always present); use 200 instead"
+                            .formatted(definition.getId(), endpoint.getStatus()));
+        }
+    }
+
+    /**
+     * 同用例内 step 名唯一（显式 name 与缺省名——name 缺省取 type——都算）：step 名是
+     * 异常定位（StepExecutionException）、数据链声明簿（DataflowBook）与日志 category 的键，
+     * 重名会静默覆盖声明、让失败定位产生歧义。
+     */
+    private void validateStepNamesUnique(UseCaseDefinition definition) {
+        Set<String> names = new HashSet<>();
+        List<StepDefinition> steps = definition.getSteps();
+        for (int i = 0; i < steps.size(); i++) {
+            StepDefinition step = steps.get(i);
+            String effectiveName = step.nameOr(step.type() != null ? step.type() : step.ref());
+            if (!names.add(effectiveName)) {
+                throw new UseCaseAssemblyException(
+                        "usecase [%s]: duplicate step name '%s' (step #%d)——step 名是异常定位与数据链声明的键，须唯一"
+                                .formatted(definition.getId(), effectiveName, i));
+            }
+        }
+    }
+
+    /**
+     * endpoint (method + path) 全局唯一：函数式路由按声明顺序注册，重复端点不会报错而是
+     * 静默遮蔽（先注册者生效）。路径模板级重叠（如 {@code /users/{id}} 与 {@code /users/me}）
+     * 属合法但顺序敏感的配置，装配期不拦截——具体路径应声明在变量路径之前（见设计文档 §6.1）。
+     */
+    private void registerEndpoint(UseCaseDefinition definition, Set<String> endpoints) {
+        UseCaseDefinition.Endpoint endpoint = definition.getEndpoint();   // 非 shared 已由 validateUseCase 保证非空
+        String key = endpoint.getMethod() + " " + endpoint.getPath();
+        if (!endpoints.add(key)) {
+            throw new UseCaseAssemblyException(
+                    "duplicate endpoint [%s]: usecase [%s] 与既有用例注册了相同的 method+path（函数式路由按顺序匹配，重复即静默遮蔽）"
+                            .formatted(key, definition.getId()));
         }
     }
 

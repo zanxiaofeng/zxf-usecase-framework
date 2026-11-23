@@ -34,8 +34,10 @@ public final class SubUseCaseStepFactory implements StepFactory {
     @Override
     public Step create(StepDefinition definition) {
         SubUseCaseConfig config = StepConfigs.bind(definition, SubUseCaseConfig.class);
+        String name = definition.nameOr(TYPE);
+        evaluator.precompileForStep(name, config.getInput());   // 语法错误启动期 fail-fast
         // ref（目标用例 id）的非空与存在性已由装配器校验
-        return new SubUseCaseStep(definition.nameOr(TYPE), Objects.requireNonNull(definition.ref()),
+        return new SubUseCaseStep(name, Objects.requireNonNull(definition.ref()),
                 config.getInput(), config.getAs(),
                 config.isIsolate(), invokerSupplier, evaluator);
     }

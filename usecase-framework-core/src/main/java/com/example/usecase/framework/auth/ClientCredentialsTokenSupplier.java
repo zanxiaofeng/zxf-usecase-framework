@@ -71,7 +71,10 @@ public final class ClientCredentialsTokenSupplier {
         }
         long expiresIn = response.get("expires_in") instanceof Number number
                 ? number.longValue() : 3600L;
-        long expiresAt = System.currentTimeMillis() + expiresIn * 1000L - EXPIRY_MARGIN_MILLIS;
+        // 提前量自适应：短 TTL（如 30s）时固定减 60s 会让令牌"拿到即过期"（每请求刷新），
+        // 取 min(60s, TTL/2) 保证任意 TTL 下都有可用窗口
+        long marginMillis = Math.min(EXPIRY_MARGIN_MILLIS, expiresIn * 1000L / 2);
+        long expiresAt = System.currentTimeMillis() + expiresIn * 1000L - marginMillis;
         return new CachedToken(String.valueOf(response.get("access_token")), expiresAt);
     }
 

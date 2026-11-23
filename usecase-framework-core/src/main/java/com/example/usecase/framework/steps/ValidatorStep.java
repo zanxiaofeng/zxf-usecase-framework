@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import com.networknt.schema.Error;
 import com.networknt.schema.Schema;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.expression.EvaluationException;
 import org.springframework.util.Assert;
@@ -26,8 +27,10 @@ import com.example.usecase.framework.expression.StepExpressionEvaluator;
  * <ul>
  *   <li><b>schema 模式</b>：JSON Schema（装配期预编译为 networknt {@link Schema}）。
  *       失败时收集全部字段错误明细；</li>
- *   <li><b>expression 模式</b>：函数式校验，表达式返回 {@code false} 即失败，其余结果视为通过；
- *       表达式自身抛异常（如业务 Bean 抛领域异常）则原样传播，走领域异常映射。</li>
+ *   <li><b>expression 模式</b>：函数式校验，表达式返回 {@code false} 即失败；求值为 {@code null}
+ *       视为<b>校验失败</b>（fail-closed：断言所依赖的数据缺失时不得静默放行）；返回非 boolean
+ *       值属配置/契约缺陷，抛 {@link IllegalStateException}。表达式自身抛异常（如业务 Bean 抛
+ *       领域异常）则原样传播，走领域异常映射。</li>
  * </ul>
  *
  * <pre>{@code
@@ -51,6 +54,7 @@ import com.example.usecase.framework.expression.StepExpressionEvaluator;
  *     errorCode: "CREDIT_TOO_LOW"
  * }</pre>
  */
+@Slf4j
 @RequiredArgsConstructor
 public final class ValidatorStep implements Step {
 
@@ -80,8 +84,22 @@ public final class ValidatorStep implements Step {
             } catch (EvaluationException e) {
                 // SpEL 求值失败（如 #vars.credit 为 null 时取 .score）语义上是"校验无法通过"，
                 // 映射 400 而非 500。领域异常不经 SpEL 包装（bean 方法抛出时原样传播），仍走领域映射。
+                // 求值错误原文可能携带内部类名/表达式结构：只进日志（WARN，附 traceId 现场），不进客户端消息
+                log.warn("validator step [{}] expression evaluation failed: {} | expression: {}", name,
+                        e.getMessage(), expression, e);
                 throw new StepValidationException(errorCode,
-                        renderMessage(context, null) + " (expression evaluation failed: " + e.getMessage() + ")");
+                        renderMessage(context, null) + "（表达式求值失败，详见服务端日志）");
+            }
+            if (result == null) {
+                // fail-closed：断言依赖的数据缺失（如可选字段探测返回 null）不得静默放行
+                log.warn("validator step [{}] expression evaluated to null — treated as validation failure", name);
+                throw new StepValidationException(errorCode, renderMessage(context, null));
+            }
+            if (!(result instanceof Boolean)) {
+                // 非 boolean 返回值（数字/字符串等）属表达式编写缺陷：明确报错而非静默通过
+                throw new IllegalStateException(
+                        "validator step [%s]: expression must evaluate to boolean, got %s".formatted(name,
+                                result.getClass().getSimpleName()));
             }
             if (Boolean.FALSE.equals(result)) {
                 throw new StepValidationException(errorCode, renderMessage(context, null));

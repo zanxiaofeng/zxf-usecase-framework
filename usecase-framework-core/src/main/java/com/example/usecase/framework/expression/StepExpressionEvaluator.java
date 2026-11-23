@@ -3,18 +3,21 @@ package com.example.usecase.framework.expression;
 import java.util.concurrent.ConcurrentHashMap;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.EvaluationException;
 import org.springframework.expression.Expression;
+import org.springframework.expression.ParseException;
 import org.springframework.expression.common.TemplateParserContext;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import com.example.usecase.framework.core.context.StepContext;
 import com.example.usecase.framework.core.exception.StepValidationException;
+import com.example.usecase.framework.core.exception.UseCaseAssemblyException;
 
 /**
  * 步骤配置中的表达式求值器（SpEL）。
@@ -35,6 +38,7 @@ import com.example.usecase.framework.core.exception.StepValidationException;
  * 键空间仅来自 YAML 配置（step 表达式、starter keys、header/uriVariable 模板），为有限集合，
  * 缓存无界增长风险可控——避免了每个请求、每个 step 重复构建语法树的开销。</p>
  */
+@Slf4j
 @RequiredArgsConstructor
 public final class StepExpressionEvaluator {
 
@@ -61,13 +65,19 @@ public final class StepExpressionEvaluator {
      * 包装为 400 语义的 {@link StepValidationException} 并附 step 名——多为「输入不满足表达式前提」
      * （如非 JSON 文本体上取 {@code #body.xxx}），属客户端可修正的 4xx 而非系统故障。
      * Bean 方法抛出的领域异常不经 SpEL 包装、原样传播，仍走领域异常映射。
+     *
+     * <p><b>消息脱敏</b>：SpEL 求值错误原文（EL1008E 等）可能携带内部类名、Bean 名与表达式
+     * 结构，不进入客户端可见的异常消息——此处 WARN 记录完整求值错误（配置作者排错落点，
+     * MDC 携带 traceId），对外仅抛固定文案。</p>
      */
     public @Nullable Object evaluate(String rawExpression, StepContext context, String stepName) {
         try {
             return evaluate(rawExpression, context);
         } catch (EvaluationException e) {
+            log.warn("step [{}] expression evaluation failed: {} | expression: {}", stepName, e.getMessage(),
+                    rawExpression, e);
             throw new StepValidationException(StepValidationException.DEFAULT_CODE,
-                    "step [%s] expression evaluation failed: %s".formatted(stepName, e.getMessage()));
+                    "step [%s] expression evaluation failed（详见服务端日志，可凭响应 traceId 定位）".formatted(stepName));
         }
     }
 
@@ -95,13 +105,53 @@ public final class StepExpressionEvaluator {
         return value;
     }
 
-    /** {@link #resolve} 的 step 名收口变体：求值失败同样映射 400 并附 step 名。 */
+    /** {@link #resolve} 的 step 名收口变体：求值失败同样映射 400 并附 step 名（消息脱敏，详见 {@link #evaluate}）。 */
     public @Nullable Object resolve(@Nullable String value, StepContext context, String stepName) {
         try {
             return resolve(value, context);
         } catch (EvaluationException e) {
+            log.warn("step [{}] expression evaluation failed: {} | expression: {}", stepName, e.getMessage(), value, e);
             throw new StepValidationException(StepValidationException.DEFAULT_CODE,
-                    "step [%s] expression evaluation failed: %s".formatted(stepName, e.getMessage()));
+                    "step [%s] expression evaluation failed（详见服务端日志，可凭响应 traceId 定位）".formatted(stepName));
+        }
+    }
+
+    /**
+     * 装配期语法预解析（启动 fail-fast 防线）：按 {@link #resolve} 的三规则分类——含 {@code #{}}
+     * 走模板、以 {@code #} / {@code @} / {@code T(} 开头走完整 SpEL、其余为字面量直接放行——
+     * 仅 parse 不求值（求值依赖运行期数据形状，语法正确不代表求值成功），并把解析结果
+     * 填入缓存（运行期首求值零解析开销）。
+     *
+     * <p>语法错误抛 {@link ParseException}，由 {@link #precompileForStep} 统一转
+     * {@link UseCaseAssemblyException} 启动期 fail-fast——配置缺陷不该拖延到首个请求。</p>
+     */
+    void precompile(@Nullable String rawExpression) {
+        if (rawExpression == null) {
+            return;
+        }
+        if (rawExpression.contains("#{")) {
+            templateCache.computeIfAbsent(rawExpression, v -> RAW_PARSER.parseExpression(v, TEMPLATE_CONTEXT));
+            return;
+        }
+        String trimmed = rawExpression.strip();
+        if (trimmed.startsWith("#") || trimmed.startsWith("@") || trimmed.startsWith("T(") || trimmed.startsWith("T (")) {
+            expressionCache.computeIfAbsent(trimmed, RAW_PARSER::parseExpression);
+        }
+    }
+
+    /**
+     * 装配期语法预解析（各 StepFactory 调用入口）：任一表达式语法错误即抛
+     * {@link UseCaseAssemblyException}（含 step 名与表达式原文）——启动期 fail-fast。
+     * null 元素与字面量（不满足三规则前缀的值）静默放行。
+     */
+    public void precompileForStep(String stepName, @Nullable String... rawExpressions) {
+        for (String raw : rawExpressions) {
+            try {
+                precompile(raw);
+            } catch (ParseException e) {
+                throw new UseCaseAssemblyException(
+                        "step [%s]: invalid expression syntax: %s".formatted(stepName, raw), e);
+            }
         }
     }
 

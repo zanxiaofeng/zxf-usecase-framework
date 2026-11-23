@@ -18,9 +18,13 @@ import com.example.usecase.framework.expression.StepExpressionEvaluator;
  *   type: logging
  *   config:
  *     level: INFO                                        # TRACE/DEBUG/INFO/WARN/ERROR，缺省 INFO
- *     message: "用户 #{biz.businessId} 信用分 #{vars.credit.score}"   # 缺省打印 payload
+ *     message: "用户 #{biz.businessId} 信用分 #{vars.credit.score}"   # 值输出须显式配置
  *     logContext: true                                   # 可选；true 时以 DEBUG 输出上下文全部内容（替代主消息）
  * }</pre>
+ *
+ * <p><b>隐私基线</b>：未配置 {@code message} 时打印<b>摘要</b>（payload 类型 + vars/biz 键集合，
+ * 与数据链录制"只记键不记值"基线一致）而非整个 payload；输出值必须显式配置
+ * {@code message}（模板）或 {@code logContext}（DEBUG 级全量）。</p>
  *
  * <p>日志 category 为 {@code usecase.<useCaseId>.step.<stepName>}，可按用例或步骤名定向治理日志级别；
  * starter 写入的 MDC（biz.*）会随日志 pattern 自动携带。{@code logContext} 的 DEBUG 输出同样走该
@@ -53,9 +57,17 @@ public final class LoggingStep implements Step {
             return;
         }
 
-        Object raw = messageTemplate == null
-                ? context.getPayload()
-                : evaluator.resolve(messageTemplate, context, name);
+        if (messageTemplate == null) {
+            // 缺省摘要：类型 + 键集（不记值——与 usecase.trace / dataflow.record 的隐私基线一致；
+            // 值输出须显式配置 message 模板或 logContext）
+            Object payload = context.getPayload();
+            log.atLevel(level).log("payload={} | vars keys={} | biz keys={}",
+                    payload == null ? "null" : payload.getClass().getSimpleName(),
+                    context.getVars().keySet(), context.getBiz().keySet());
+            return;
+        }
+
+        Object raw = evaluator.resolve(messageTemplate, context, name);
         String rendered = String.valueOf(raw);
         log.atLevel(level).log(rendered);
     }

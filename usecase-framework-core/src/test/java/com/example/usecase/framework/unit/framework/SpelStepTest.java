@@ -7,12 +7,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.support.StaticApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
+import com.example.usecase.framework.assemble.StepDefinition;
 import com.example.usecase.framework.core.context.StepContext;
 import com.example.usecase.framework.core.exception.StepValidationException;
+import com.example.usecase.framework.core.exception.UseCaseAssemblyException;
 import com.example.usecase.framework.expression.StepExpressionEvaluator;
 import com.example.usecase.framework.steps.SpelDataLoaderStep;
 import com.example.usecase.framework.steps.SpelDataSaverStep;
 import com.example.usecase.framework.steps.SpelDataTransformerStep;
+import com.example.usecase.framework.steps.SpelStepFactory;
 import com.example.usecase.framework.steps.config.SpelStepConfig.OnNull;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -135,5 +138,33 @@ class SpelStepTest {
         assertThat(evaluator.resolve("plain-literal", context)).isEqualTo("plain-literal");
         assertThat(evaluator.resolve("Bearer #{vars.token}", context)).isEqualTo("Bearer abc");
         assertThat(evaluator.resolve("#path.id", context)).isEqualTo("u1");
+    }
+
+    @Test
+    void invalidExpressionSyntaxFailsFastAtAssembly() {
+        // SpEL 语法错误（缺操作数）在装配期预解析即拦截，不拖延到首个请求
+        SpelStepFactory factory = new SpelStepFactory("dataLoader", SpelStepFactory.Role.LOADER, evaluator);
+        StepDefinition badSyntax = new StepDefinition("load", "dataLoader", null,
+                Map.of("expression", "#payload..score >="));
+
+        assertThatThrownBy(() -> factory.create(badSyntax))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("invalid expression syntax");
+    }
+
+    @Test
+    void evaluationFailureMessageIsSanitizedForClient() {
+        // 求值失败仍映射 400，但客户端消息不再回显 SpEL 错误原文（含类型名/表达式结构）——脱敏固定文案
+        SpelDataLoaderStep step = new SpelDataLoaderStep("load", "#payload.missing.field", null, evaluator);
+        StepContext context = newContext();
+        context.setPayload("a-string");   // String 上取 .missing.field 抛 EL1008E（消息含类型名）
+
+        assertThatThrownBy(() -> step.execute(context))
+                .isInstanceOfSatisfying(StepValidationException.class, e -> {
+                    assertThat(e.defaultHttpStatus()).isEqualTo(400);
+                    assertThat(e.getMessage()).contains("load")
+                            .doesNotContain("EL1008E")
+                            .doesNotContain("java.lang.String");
+                });
     }
 }

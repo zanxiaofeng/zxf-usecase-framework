@@ -114,6 +114,24 @@ class UseCaseRouterE2eTest {
     }
 
     @Test
+    void outerMdcKeysSurviveRequestProcessing() throws Exception {
+        // Web 入口对 MDC 是「快照恢复」而非「直接删除」：外层组件（如 Micrometer Tracing 的
+        // traceId 键）已写入的值在请求结束后必须还原，不被框架清理误删
+        org.slf4j.MDC.put("traceId", "outer-tracing-trace");
+        org.slf4j.MDC.put("biz.outerKey", "outer-value");
+        try {
+            mockMvc.perform(get("/api/v1/users/u1"))
+                    .andExpect(status().isOk());
+
+            assertThat(org.slf4j.MDC.get("traceId")).isEqualTo("outer-tracing-trace");
+            assertThat(org.slf4j.MDC.get("biz.outerKey")).isEqualTo("outer-value");
+        } finally {
+            org.slf4j.MDC.remove("traceId");
+            org.slf4j.MDC.remove("biz.outerKey");
+        }
+    }
+
+    @Test
     void getUserProfile_downstreamUnreachable_returns502() throws Exception {
         mockMvc.perform(get("/api/v1/users/u1/profile"))
                 .andExpect(status().isBadGateway())

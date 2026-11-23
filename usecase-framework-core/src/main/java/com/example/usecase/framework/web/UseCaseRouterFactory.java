@@ -1,6 +1,5 @@
 package com.example.usecase.framework.web;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,11 +16,11 @@ import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
 import tools.jackson.databind.ObjectMapper;
 
+import com.example.usecase.framework.core.context.MdcScopes;
 import com.example.usecase.framework.core.context.StepContext;
 import com.example.usecase.framework.core.UseCase.EndpointSpec;
 import com.example.usecase.framework.core.UseCase;
 import com.example.usecase.framework.core.UseCaseRegistry;
-import com.example.usecase.framework.steps.StarterStep;
 
 /**
  * 把 UseCaseRegistry 中所有用例绑定为一个 {@link RouterFunction}：
@@ -31,9 +30,10 @@ import com.example.usecase.framework.steps.StarterStep;
  * <ul>
  *   <li>管道执行前往 biz 关键数据区写入 {@code traceId}（取 X-Request-Id 请求头，缺省生成 UUID），
  *       并随 ApiResponse.traceId 回填；</li>
- *   <li>管道结束后清理 starter 写入的 MDC（{@code biz.*} 前缀），防止线程复用串号；
+ *   <li>管道结束后<b>快照恢复</b>进入前的 MDC 现场（而非直接删除 {@code biz.*} / {@code traceId} 键）——
+ *       防止线程复用串号的同时，不误删外层 Filter / Micrometer Tracing 写入的同名键；
  *       异常 → HTTP 响应的映射（委托 {@link ErrorResponseMapper}，等价于 @RestControllerAdvice）
- *       在清理之前执行，保证失败日志携带 traceId 现场。</li>
+ *       在恢复之前执行，保证失败日志携带 traceId 现场。</li>
  * </ul>
  */
 public final class UseCaseRouterFactory {
@@ -83,9 +83,13 @@ public final class UseCaseRouterFactory {
 
     private ServerResponse invoke(UseCase useCase, ServerRequest request) {
         StepContext context = StepContext.of(request, objectMapper);
-        seedTraceId(context, request);
         request.attributes().put(CONTEXT_ATTRIBUTE, context);
-        try {
+        // MDC 快照恢复而非直接删除：外层组件（Micrometer Tracing 的 traceId 键、业务 Filter 的
+        // biz.* 前缀键）可能已写入同名键，框架结束时须还原现场而非清空（复用 isolate/standalone
+        // 的 MdcScopes 机制，清理线程复用串号的同时不误删外层数据）。注意 seedTraceId 必须在
+        // 快照**之后**（作用域内）执行——否则快照捕获的已是本请求覆盖后的值
+        return MdcScopes.withRestoration(() -> {
+            seedTraceId(context, request);
             try {
                 Object payload = useCase.execute(context);
                 String traceId = traceIdOf(context);
@@ -97,15 +101,13 @@ public final class UseCaseRouterFactory {
                 }
                 return response.body(ApiResponse.success(payload, traceId));
             } catch (RuntimeException e) {
-                // 错误映射必须在 finally 清理 MDC **之前**执行：失败日志（logFailure）携带
+                // 错误映射必须在 MDC 恢复 **之前**执行：失败日志（logFailure）携带
                 // traceId/biz.* 现场，客户端凭响应里的 traceId 才能查到对应错误日志行。
-                // 替代原 builder.onError 注册（其执行点位于清理之后，错误日志恒丢 traceId）；
+                // 替代原 builder.onError 注册（其执行点位于恢复之后，错误日志恒丢 traceId）；
                 // Error 不在此捕获——OOM 等不可恢复错误交容器，不做 500 JSON 映射（exception-handling §5.2）
                 return errorMapper.toErrorResponse(e, request);
             }
-        } finally {
-            clearBizMdc();
-        }
+        });
     }
 
     /**
@@ -125,16 +127,5 @@ public final class UseCaseRouterFactory {
     static @Nullable String traceIdOf(StepContext context) {
         Object value = context.getBiz(StepContext.TRACE_ID_KEY);
         return value == null ? null : String.valueOf(value);
-    }
-
-    /** 清理 starter 写入的 MDC（biz.* 前缀）与入口写入的 traceId，避免容器线程复用导致日志串号。 */
-    private void clearBizMdc() {
-        Map<String, String> mdcMap = MDC.getCopyOfContextMap();
-        if (mdcMap == null) {
-            return;
-        }
-        mdcMap.keySet().stream()
-                .filter(key -> key.startsWith(StarterStep.MDC_PREFIX) || StepContext.TRACE_ID_KEY.equals(key))
-                .forEach(MDC::remove);
     }
 }

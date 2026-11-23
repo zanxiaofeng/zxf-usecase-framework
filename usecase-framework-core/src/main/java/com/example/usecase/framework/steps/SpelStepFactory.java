@@ -33,6 +33,7 @@ public final class SpelStepFactory implements StepFactory {
     public Step create(StepDefinition definition) {
         SpelStepConfig config = StepConfigs.bind(definition, SpelStepConfig.class);
         String name = definition.nameOr(type);
+        evaluator.precompileForStep(name, config.getExpression());   // 语法错误启动期 fail-fast
         return switch (role) {
             case LOADER -> new SpelDataLoaderStep(name, config.getExpression(), config.getAs(), evaluator);
             case TRANSFORMER -> new SpelDataTransformerStep(name, config.getExpression(), config.getAs(),

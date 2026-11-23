@@ -31,7 +31,7 @@ java -jar usecase-framework-demo/target/usecase-framework-demo-1.0.0-SNAPSHOT.ja
 ```
 shared usecase [userBaseEnrichment] steps=[loadUser, toDto]
 route: GET /api/v1/users/{id} -> usecase [getUser] steps=[start, validateInput, loadUserBase]
-route: GET /api/v1/users/{id}/profile -> usecase [getUserProfile] steps=[start, loadUserBase, fetchCredit, checkCreditPass, logCredit, encodeUserId, userProfileTransformer, saveSnapshot]
+route: GET /api/v1/users/{id}/profile -> usecase [getUserProfile] steps=[start, loadUserBase, fetchCredit, checkCreditPass, logCredit, encodeUserId, userProfileTransformer]
 route: GET /api/v1/users/token/{token} -> usecase [getUserByToken] steps=[start, decodeToken, loadUserBase]
 route: GET /api/v1/users/{id}/greeting -> usecase [greetUser] steps=[start, GreetingStep]
 route: POST /api/v1/user-snapshots -> usecase [createUserSnapshot] steps=[start, validateBody, checkUserExists, logCreation, toSnapshot, saveSnapshot, publishSnapshotCreated]
@@ -69,12 +69,9 @@ usecase:
             auth: { scheme: bearer, options: { token: "${credit.token}" } }
             as: credit                      # 旁路输出到 #vars.credit，不动 payload
         - name: mergeProfile
-          ref: userProfileTransformer       # 引用自定义 Step Bean（与 type 二选一）
-        - name: saveSnapshot
-          type: dataSaver
-          config:
-            expression: "@profileSnapshotRepository.save(#payload)"
+          ref: userProfileTransformer       # 引用自定义 Step Bean（与 type 二选一）——管道收尾，画像随响应返回
 ```
+（GET 为安全方法：只读聚合不落业务数据，写快照见 POST /api/v1/user-snapshots；dataSaver 在 GET 管道仅限可重复执行的非业务创建并须显式注明）
 
 ## step 类型
 
@@ -88,7 +85,7 @@ usecase:
 | `encoder` | DataTransformer | 编码/摘要（base64/base64url/url/hex/md5/sha256；数据变换特例） | `algorithm`, `source`, `as` |
 | `decoder` | DataTransformer | 解码（要求算法可逆，装配期校验；数据变换特例） | `algorithm`, `source`, `as` |
 | `dataSaver` | DataSaver | payload → 出端口 | `expression`（返回 null 保留 payload）, `as` |
-| `validator` | Step | 入口校验（schema / 函数式，二选一） | `expression` 或 `schema`, `target`, `message`, `errorCode` |
+| `validator` | Step | 入口校验（schema / schemaRef / 函数式，三选一） | `expression` / `schema` / `schemaRef` 其一, `target`, `message`, `errorCode` |
 | `usecase` | Step | 嵌入 shared 用例作为子用例 | `ref`=目标用例 id, `input`, `as`, `isolate` |
 | `eventPublisher` | Step | 发布领域事件（活动事务内 afterCommit、提交后才外发，回滚不发布；无事务立即发布；外发失败不推翻已提交事务——框架 ERROR 留痕，补偿归实现方） | `event`（SpEL 构造事件，必填）, `publisher`（Bean 名，缺省取唯一实现，装配期校验存在性/唯一性/@Primary） |
 | 自定义 | 命中主数据流语义时实现对应角色接口，否则实现 Step | 任意逻辑 | `ref: beanName` |
@@ -195,7 +192,7 @@ public class GreetingStep implements DataTransformer {
 
 ## validator（入口校验）
 
-一般放在管道入口（`target: "#body"` 校验请求体，缺省 `#payload`）。两种互斥模式，装配期强制二选一：
+一般放在管道入口（`target: "#body"` 校验请求体，缺省 `#payload`）。三种互斥模式（装配期强制三选一；`schemaRef` 为 classpath JSON 资源路径，直读不经属性绑定——含数字键对象的 schema 须走此通道，内联 `schema` 的全数字键对象会被绑定失真还原启发式误转）：
 
 ```yaml
 # schema 模式：JSON Schema 2020-12（networknt 3.x，装配期预编译）
@@ -219,7 +216,7 @@ public class GreetingStep implements DataTransformer {
     errorCode: "CREDIT_TOO_LOW"                    # 缺省 VALIDATION_ERROR
 ```
 
-失败抛 `StepValidationException`：schema 模式附全部字段错误明细（最多 5 条）；HTTP 默认映射 **400**（`ErrorCoded.defaultHttpStatus()`），可被 `usecase.error-mappings` 覆盖。异常语义：函数模式中 SpEL **求值失败**（如 `#vars.credit` 为 null 时取 `.score`）同样映射 400（消息附求值错误）；而表达式调用的 Bean 方法抛出的**领域异常**不经 SpEL 包装，原样传播走领域映射。
+失败抛 `StepValidationException`：schema 模式附全部字段错误明细（最多 5 条）；HTTP 默认映射 **400**（`ErrorCoded.defaultHttpStatus()`），可被 `usecase.error-mappings` 覆盖。异常语义：函数模式中 SpEL **求值失败**（如 `#vars.credit` 为 null 时取 `.score`）同样映射 400（客户端消息为脱敏固定文案，求值错误原文只进服务端日志）；**求值为 null 视为校验失败**（fail-closed）；**返回非 boolean 抛 `IllegalStateException`**（配置缺陷）；表达式调用的 Bean 方法抛出的**领域异常**不经 SpEL 包装，原样传播走领域映射。
 
 ## logging
 
@@ -228,7 +225,7 @@ public class GreetingStep implements DataTransformer {
   type: logging
   config:
     level: INFO              # TRACE/DEBUG/INFO/WARN/ERROR，缺省 INFO
-    message: "用户 #{biz.businessId} 信用分: #{vars.credit.score}"   # 缺省打印 payload
+    message: "用户 #{biz.businessId} 信用分: #{vars.credit.score}"   # 未配置时打印摘要（类型+键集，不输出值）
 ```
 
 日志 category 为 `usecase.<useCaseId>.step.<stepName>`，可按用例或步骤名定向治理级别；配合 MDC 的 `biz.*` 实现全链路关联。
@@ -257,7 +254,7 @@ public class GreetingStep implements DataTransformer {
 | `basic` | `username`, `password` | HTTP Basic |
 | `bearer` | `token` 或 `tokenProvider` | 静态令牌 / TokenProvider Bean 动态令牌 |
 | `apiKey` | `header`, `value` | 请求头形式的 API Key |
-| `clientCredentials` | `tokenUrl`, `clientId`, `clientSecret`, `scope?` | OAuth2 CC，自动换 token 并缓存（提前 60s 过期；按 (tokenUrl, clientId) 分键原子刷新，不同端点互不阻塞；令牌端点调用默认连接 3s / 读取 10s） |
+| `clientCredentials` | `tokenUrl`, `clientId`, `clientSecret`, `scope?` | OAuth2 CC，自动换 token 并缓存（提前量自适应 min(60s, TTL/2)；按 (tokenUrl, clientId, scope) 三元组分键原子刷新——同客户端不同 scope 不共享令牌；令牌端点调用默认连接 3s / 读取 10s） |
 | 自定义 | 任意 | 实现 `AuthHandler` 注册为 Bean，`scheme()` 即类型名 |
 
 ## 错误映射

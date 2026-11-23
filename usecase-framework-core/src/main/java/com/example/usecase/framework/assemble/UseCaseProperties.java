@@ -29,7 +29,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "usecase")
 public record UseCaseProperties(
         @DefaultValue List<@NotNull @Valid UseCaseDefinition> definitions,
-        @DefaultValue Map<String, @Min(100) @Max(599) Integer> errorMappings,
+        @DefaultValue Map<String, @Min(400) @Max(599) Integer> errorMappings,
         @DefaultValue("true") boolean report,
         @DefaultValue Trace trace,
         @DefaultValue Dataflow dataflow) {

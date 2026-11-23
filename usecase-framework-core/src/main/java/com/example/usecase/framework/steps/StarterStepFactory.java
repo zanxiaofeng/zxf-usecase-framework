@@ -30,6 +30,8 @@ public final class StarterStepFactory implements StepFactory {
     @Override
     public Step create(StepDefinition definition) {
         StarterConfig config = StepConfigs.bind(definition, StarterConfig.class);
-        return new StarterStep(definition.nameOr(TYPE), new LinkedHashMap<>(config.keys()), evaluator);
+        String name = definition.nameOr(TYPE);
+        evaluator.precompileForStep(name, config.keys().values().toArray(String[]::new));   // 语法错误启动期 fail-fast
+        return new StarterStep(name, new LinkedHashMap<>(config.keys()), evaluator);
     }
 }

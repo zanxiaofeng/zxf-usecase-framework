@@ -70,6 +70,24 @@ class ClientCredentialsAuthHandlerTest {
     }
 
     @Test
+    void shortTtlTokenStillHasUsableWindow() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        ClientCredentialsAuthHandler handler = new ClientCredentialsAuthHandler(new ClientCredentialsTokenSupplier(builder.build()));
+
+        // expires_in=30s：固定 60s 提前量会让令牌"拿到即过期"（每请求刷新）；
+        // 提前量自适应（min(60s, TTL/2)）后仍有 15s 可用窗口 → 第二次请求命中缓存
+        server.expect(requestTo("https://auth/token"))
+                .andRespond(withSuccess("{\"access_token\":\"t-short\",\"expires_in\":30}",
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(bearerHeader(handler, OPTIONS)).isEqualTo("Bearer t-short");
+        assertThat(bearerHeader(handler, OPTIONS)).isEqualTo("Bearer t-short");   // 短 TTL 仍命中缓存
+
+        server.verify();   // 只取了一次 token
+    }
+
+    @Test
     void cachesTokensPerScope() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

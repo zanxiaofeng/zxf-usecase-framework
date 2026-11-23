@@ -204,4 +204,19 @@ class UseCaseInvokerTest {
                 .hasMessageContaining("Integer")
                 .hasMessageContaining("String");
     }
+
+    @Test
+    void programmaticRecursionIsGuardedByDepthLimit() {
+        // 装配期环检测只覆盖 YAML 引用图；Java 编程调用（step 内回调 invoker 再入自身用例）
+        // 形成图中不可见的递归——深度上限抛明确 IllegalStateException 而非耗尽栈 StackOverflowError
+        UseCaseInvoker[] holder = new UseCaseInvoker[1];
+        Step selfRecursive = context -> holder[0].invoke("loopUc", context.getPayload());
+        UseCase loop = new UseCase("loopUc", "自递归", null, List.of(selfRecursive), true);
+        UseCaseInvoker invoker = new UseCaseInvoker(() -> new UseCaseRegistry(List.of(loop)));
+        holder[0] = invoker;
+
+        assertThatThrownBy(() -> invoker.invokeStandalone("loopUc", "u1"))
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("invocation depth");
+    }
 }

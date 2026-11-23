@@ -58,6 +58,7 @@ public final class CodecStepFactory implements StepFactory {
                     "step [%s]: codec algorithm '%s' does not support decode (one-way digest)"
                             .formatted(name, algorithm));
         }
+        evaluator.precompileForStep(name, config.getSource());   // 语法错误启动期 fail-fast
         return new CodecStep(name, codec, direction, config.getSource(), config.getAs(), evaluator);
     }
 }

@@ -75,15 +75,78 @@ class ValidatorStepTest {
 
     @Test
     void expressionEvaluationFailureMapsToValidation400() {
-        // #payload 为 null 时取 .score 抛 SpEL 求值异常：语义上是"校验无法通过"→ 400 而非 500
+        // #payload 为 null 时取 .score 抛 SpEL 求值异常：语义上是"校验无法通过"→ 400 而非 500；
+        // 求值错误原文（含类型名/表达式结构）只进日志，客户端消息为脱敏固定文案
         Step step = factory.create(new StepDefinition("check", "validator", null,
                 Map.of("expression", "#payload.score >= 600", "message", "信用分校验失败")));
         assertThatThrownBy(() -> step.execute(contextWithPayload(null)))
                 .isInstanceOfSatisfying(StepValidationException.class, e -> {
                     assertThat(e.getErrorCode()).isEqualTo("VALIDATION_ERROR");
                     assertThat(e.defaultHttpStatus()).isEqualTo(400);
-                    assertThat(e.getMessage()).contains("信用分校验失败").contains("expression evaluation failed");
+                    assertThat(e.getMessage()).contains("信用分校验失败").contains("表达式求值失败");
+                    assertThat(e.getMessage()).doesNotContain("EL1007E").doesNotContain("#payload.score");
                 });
+    }
+
+    @Test
+    void expressionNullResultFailsClosed() {
+        // fail-closed：表达式求值为 null（断言依赖的数据缺失）视为校验失败，不再静默放行
+        Step step = factory.create(new StepDefinition("checkNull", "validator", null,
+                Map.of("expression", "#payload", "message", "数据缺失")));
+        assertThatThrownBy(() -> step.execute(contextWithPayload(null)))
+                .isInstanceOfSatisfying(StepValidationException.class, e -> {
+                    assertThat(e.getErrorCode()).isEqualTo("VALIDATION_ERROR");
+                    assertThat(e.getMessage()).contains("数据缺失");
+                });
+    }
+
+    @Test
+    void expressionNonBooleanResultFailsFastAsConfigDefect() {
+        // 非 boolean 返回值属表达式编写缺陷：抛 IllegalStateException（配置/契约错误）而非静默通过
+        Step step = factory.create(new StepDefinition("checkNonBool", "validator", null,
+                Map.of("expression", "#payload + 1")));
+        assertThatThrownBy(() -> step.execute(contextWithPayload(1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must evaluate to boolean");
+    }
+
+    @Test
+    void blankExpressionFailsAtAssembly() {
+        // expression: "" 空串在绑定期拒绝（此前空串绕过互斥校验、运行期首次求值才失败）
+        assertThatThrownBy(() -> factory.create(new StepDefinition("checkBlank", "validator", null,
+                Map.of("expression", "", "schema", Map.of("type", "object")))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("expression");
+    }
+
+    @Test
+    void schemaRefLoadsIndependentResource_preservingNumericKeyObjects() {
+        // schemaRef 独立资源直读 JSON：不经属性绑定，无「全数字键 Map 被还原为 List」的失真——
+        // {"const": {"0": "a", "1": "b"}} 的对象语义保持原形（内联写法会被启发式还原破坏）
+        Step step = factory.create(new StepDefinition("checkRef", "validator", null,
+                Map.of("schemaRef", "schema/numeric-keys-schema.json")));
+
+        // 恰好等于该数字键对象的 target 通过
+        Map<String, Object> matching = new LinkedHashMap<>();
+        matching.put("0", "a");
+        matching.put("1", "b");
+        StepContext matchContext = StepContext.standalone();
+        matchContext.setPayload(matching);
+        assertDoesNotThrow(() -> step.execute(matchContext));
+
+        // 数组形态（被误转后的语义）不通过——证明资源路径保持了对象语义
+        StepContext arrayContext = StepContext.standalone();
+        arrayContext.setPayload(List.of("a", "b"));
+        assertThatThrownBy(() -> step.execute(arrayContext))
+                .isInstanceOf(StepValidationException.class);
+    }
+
+    @Test
+    void schemaRefMissingResourceFailsAtAssembly() {
+        assertThatThrownBy(() -> factory.create(new StepDefinition("checkMissing", "validator", null,
+                Map.of("schemaRef", "schema/not-exists.json"))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("schemaRef");
     }
 
     // ------------------------------------------------------------------
