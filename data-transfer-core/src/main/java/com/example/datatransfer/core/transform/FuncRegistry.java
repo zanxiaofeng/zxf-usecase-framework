@@ -32,7 +32,9 @@ public final class FuncRegistry {
             Map.entry("dateFormat", (v, args, ctx) -> DateTimeFunctions.dateFormat(v, args)),
             Map.entry("epochToIso", (v, args, ctx) -> DateTimeFunctions.epochToIso(v, args)),
             Map.entry("toIsoDate", (v, args, ctx) -> DateTimeFunctions.toIsoDate(v, args)),
-            Map.entry("toIsoDateTime", (v, args, ctx) -> DateTimeFunctions.toIsoDateTime(v, args)));
+            Map.entry("toIsoDateTime", (v, args, ctx) -> args.size() == 2
+                    ? DateTimeFunctions.toIsoDateTimeInZone(v, args)
+                    : DateTimeFunctions.toIsoDateTime(v, args)));
 
     private final Map<String, TransformFunction> functions = new ConcurrentHashMap<>(BUILTINS);
 

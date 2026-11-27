@@ -124,7 +124,7 @@ class IntermediateTest {
     }
 
     @Test
-    void containerStaging_expandsForWildcardNavigation() {
+    void containerStaging_exposesNestedFieldsToRules() {
         TransferSpec spec = specBuilder()
                 .intermediate(List.of(
                         IntermediateField.builder().to("$cities")
@@ -136,6 +136,26 @@ class IntermediateTest {
         JsonNode result = new TransferEngine(spec).transfer(ORDER_JSON);
 
         assertThat(result.path("out").path("city").asString()).isEqualTo("Shanghai");
+    }
+
+    @Test
+    void stagedReferences_withIndexesOrWildcards_navigateContainerStaging() {
+        // 外部评审二轮 新发现：历史行为——stagedRoot 只按 '.' 切分，'$x[*].f' / '$lst[*]' / '$lst[1]'
+        // 被误拒为「not declared」，与 §6.8「支持 [*] 通配导航」的承诺矛盾
+        TransferSpec spec = specBuilder()
+                .intermediate(List.of(
+                        IntermediateField.builder().to("$x").expr("[{'f': 1}, {'f': 2}]").build(),
+                        IntermediateField.builder().to("$lst").expr("['a', 'b']").build()))
+                .rules(List.of(
+                        MappingRule.builder().from("$x[*].f").to("out.f[*]").build(),
+                        MappingRule.builder().from("$lst[*]").to("out.all[*]").build(),
+                        MappingRule.builder().from("$lst[1]").to("out.second").build(),
+                        MappingRule.builder().from("$x[0].f").to("out.first").build()))
+                .build();
+
+        JsonNode result = new TransferEngine(spec).transfer(ORDER_JSON);
+
+        assertThat(result.path("out").toString()).isEqualTo("{\"f\":[1,2],\"all\":[\"a\",\"b\"],\"second\":\"b\",\"first\":1}");
     }
 
     @Test
@@ -252,5 +272,61 @@ class IntermediateTest {
 
         assertThat(result.path("out").path("tier").asString()).isEqualTo("gold");
         assertThat(result.toString()).doesNotContain("$x");
+    }
+
+    @Test
+    void quotedStagedArgument_isALiteral_unquotedIsAReference() {
+        // 带引号的 '$rate' 是字面量（构造期与运行期同一口径）；不带引号的 $rate 才从合并视图取值代入。
+        // 历史行为：带引号的实参在剥引号后仍被当作引用，上下文里取不到就报「not present in the mapping context」
+        TransferSpec spec = specBuilder()
+                .intermediate(List.of(
+                        IntermediateField.builder().to("$rate").from("customer.tier")
+                                .transform("tierToRate").build()))
+                .rules(List.of(
+                        MappingRule.builder().from("note").to("out.literal")
+                                .transform("replace('$rate', 'X')").build(),
+                        MappingRule.builder().from("note").to("out.referenced")
+                                .transform("replace($rate, 'X')").build()))
+                .build();
+        TransferEngine engine = new TransferEngine(spec, Map.of("tierToRate", tierToRate()));
+
+        JsonNode out = engine.transfer("{\"customer\": {\"tier\": \"gold\"}, \"note\": \"a $rate b\"}").path("out");
+
+        assertThat(out.path("literal").asString()).isEqualTo("a X b");
+        assertThat(out.path("referenced").asString()).isEqualTo("a $rate b");   // "0.8" 未出现在文本中
+    }
+
+    @Test
+    void stagedReferences_insideStringLiterals_areNotTreatedAsReferences() {
+        // 字符串字面量里的 $ident 不是引用：'$price=' + $rate 只引用了 $rate
+        // 历史行为：构造期引用检查用正则扫全文，把字面量里的 $price 误报为「未声明」
+        TransferSpec spec = specBuilder()
+                .intermediate(List.of(
+                        IntermediateField.builder().to("$rate").from("customer.tier")
+                                .transform("tierToRate").build(),
+                        IntermediateField.builder().to("$label").expr("'$price=' + $rate").build()))
+                .rules(List.of(MappingRule.builder().from("$label").to("out.label").build()))
+                .build();
+
+        JsonNode out = new TransferEngine(spec, Map.of("tierToRate", tierToRate()))
+                .transfer(ORDER_JSON).path("out");
+
+        assertThat(out.path("label").asString()).isEqualTo("$price=0.8");
+        // 代码位置的未声明引用仍然拒绝
+        assertThatThrownBy(() -> new TransferEngine(specBuilder()
+                .intermediate(List.of(IntermediateField.builder().to("$label")
+                        .expr("'$price' + $nope").build()))
+                .rules(List.of(MappingRule.builder().from("$label").to("out.label").build()))
+                .build()))
+                .isInstanceOf(TransferAssemblyException.class)
+                .hasMessageContaining("$nope");
+        // 转义引号（\'）不终止字符串字面量：$nope 仍在字面量里，不是引用
+        TransferSpec escaped = specBuilder()
+                .intermediate(List.of(IntermediateField.builder().to("$label")
+                        .expr("'it\\'s $nope' + 'x'").build()))
+                .rules(List.of(MappingRule.builder().from("$label").to("out.label").build()))
+                .build();
+        assertThat(new TransferEngine(escaped).transfer(ORDER_JSON).path("out").path("label").asString())
+                .isEqualTo("it's $nopex");
     }
 }

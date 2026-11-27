@@ -1,12 +1,15 @@
 package com.example.usecase.framework.unit.framework;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.example.datatransfer.core.exception.ExpressionException;
 import com.example.usecase.framework.assemble.StepDefinition;
+import com.example.usecase.framework.core.exception.UseCaseAssemblyException;
 import com.example.usecase.framework.core.spi.Step;
 import com.example.usecase.framework.core.context.StepContext;
 import com.example.usecase.framework.core.dataflow.Dataflow;
@@ -116,6 +119,32 @@ class DataTransferStepTest {
         assertThat(order.get("orderDate")).isEqualTo("2026-01-15");
         assertThat(order.get("createdAt")).isEqualTo("2026-01-15T10:30:00");
         assertThat(order.get("eventTime")).isEqualTo("2026-01-15T18:30:00+08:00");
+    }
+
+    @Test
+    void constructorInExpression_isRejectedAtAssembly() {
+        // 外部评审二轮 P1-1：表达式里的 new(...) 在解析期即被拒绝——装配期暴露，而不是等到首个请求
+        assertThatThrownBy(() -> factory.create(new StepDefinition("escape", "dataTransfer", null,
+                Map.of("spec", "transfers/constructor-in-expression.yaml"))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("escape")
+                .hasMessageContaining("computed #0")
+                .hasMessageContaining("java.io.FileInputStream");
+    }
+
+    @Test
+    void outOfBoundExpression_isRejectedAtRuntime_andLeavesPayloadUntouched() {
+        // spec 表达式按不可信输入对待——语法合法但越界的表达式（反射链）装配期通过，
+        // 在求值期被沙箱拦截；步骤失败时 payload 不被改写
+        Step step = factory.create(new StepDefinition("escape", "dataTransfer", null,
+                Map.of("spec", "transfers/sandbox-escape.yaml")));
+        StepContext context = contextWithPayload(Map.of("id", "u1"));
+
+        assertThatThrownBy(() -> step.execute(context))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("computed #0")
+                .hasMessageContaining("getClass");
+        assertThat(context.getPayload()).isEqualTo(Map.of("id", "u1"));
     }
 
 }

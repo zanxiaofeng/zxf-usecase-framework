@@ -1,0 +1,7 @@
+version: "1.0"
+name: "ConflictingTargets"
+rules:
+  - from: "id"
+    to: "out.id"
+  - from: "name"
+    to: "out.id.part"

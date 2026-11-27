@@ -1,0 +1,9 @@
+version: "1.0"
+name: "ConstructorInExpression"
+rules:
+  - from: "id"
+    to: "out.id"
+computed:
+  # 表达式里的 new(...)：脚本特性关闭后在解析期即被拒绝，装配期暴露
+  - to: "out.leak"
+    expr: "new('java.io.FileInputStream', '/tmp/dt-sandbox-probe').readAllBytes().length"

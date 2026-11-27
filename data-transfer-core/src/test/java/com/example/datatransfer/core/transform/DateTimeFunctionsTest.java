@@ -160,6 +160,43 @@ class DateTimeFunctionsTest {
         assertThat(result).isEqualTo("2026-01-15T10:30:00");
     }
 
+    @Test
+    void toIsoDateTime_withZone_convertsOffsetToTargetWallClock() {
+        // 外部评审二轮 评审二-13：dateFormat 丢弃 offset 会让本地时间顺序与真实时刻相反；
+        // 带时区参数的 toIsoDateTime 按「同一时刻」换算到目标时区的无 offset 形态
+        String offsetPattern = "yyyy-MM-dd'T'HH:mm:ssXXX";
+
+        assertThat(registry.get("toIsoDateTime").apply("2026-01-01T00:30:00+02:00",
+                List.of(offsetPattern, "UTC"), context)).isEqualTo("2025-12-31T22:30:00");
+        assertThat(registry.get("toIsoDateTime").apply("2026-01-01T00:30:00+02:00",
+                List.of(offsetPattern, "Asia/Shanghai"), context)).isEqualTo("2026-01-01T06:30:00");
+        assertThat(registry.get("toIsoDateTime").apply("2025-12-31T23:30:00-05:00",
+                List.of(offsetPattern, "UTC"), context)).isEqualTo("2026-01-01T04:30:00");
+        assertThat(registry.get("toIsoDateTime").apply("2025-12-31T18:30:00-05:00",
+                List.of(offsetPattern, "UTC"), context)).isEqualTo("2025-12-31T23:30:00");
+        assertThat(registry.get("toIsoDateTime").apply("2026-01-15T10:30:00Z",
+                List.of(offsetPattern, "Asia/Shanghai"), context)).isEqualTo("2026-01-15T18:30:00");
+        assertThat(registry.get("toIsoDateTime").apply("2026-01-15 10:30:00+0800",
+                List.of("yyyy-MM-dd HH:mm:ssZ", "UTC"), context)).isEqualTo("2026-01-15T02:30:00");
+    }
+
+    @Test
+    void toIsoDateTime_withZone_requiresOffsetInSourceValue() {
+        // 源值不带 offset / 时区字段时无从换算——明确报错而非当作 UTC 静默接受
+        assertThatThrownBy(() -> registry.get("toIsoDateTime").apply("2026-01-15T10:30:00",
+                List.of("yyyy-MM-dd'T'HH:mm:ss", "UTC"), context))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("offset");
+        assertThatThrownBy(() -> registry.get("toIsoDateTime").apply("2026-01-15T10:30:00Z",
+                List.of("yyyy-MM-dd'T'HH:mm:ssXXX", "Mars/Olympus"), context))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Mars/Olympus");
+        assertThatThrownBy(() -> registry.get("toIsoDateTime").apply("2026-01-15T10:30:00Z",
+                List.of("yyyy-MM-dd'T'HH:mm:ssXXX", "UTC", "extra"), context))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("toIsoDateTime(fmt, zone)");
+    }
+
     // ---- now（Clock 注入确定性）----
 
     @Test

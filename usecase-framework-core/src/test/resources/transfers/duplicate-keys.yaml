@@ -1,0 +1,8 @@
+version: "1.0"
+name: "DuplicateKeys"
+rules:
+  - from: "id"
+    to: "out.first"
+rules:
+  - from: "name"
+    to: "out.second"

@@ -8,10 +8,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import lombok.experimental.UtilityClass;
@@ -37,8 +40,14 @@ import lombok.experimental.UtilityClass;
 class DateTimeFunctions {
 
     /** 固定秒级 ISO 输出形态（LocalDateTime.toString() 会省略零秒段，须显式 pattern 固定 19 字符） */
-    private static final DateTimeFormatter FIXED_SECONDS =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    private static final DateTimeFormatter FIXED_SECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+
+    /** pattern → formatter：spec 里的 pattern 集合有限，不再逐值重编译（ofPattern 走平台默认 Locale） */
+    private static final Map<String, DateTimeFormatter> FORMATTERS = new ConcurrentHashMap<>();
+
+    private static DateTimeFormatter formatter(String pattern) {
+        return FORMATTERS.computeIfAbsent(pattern, DateTimeFormatter::ofPattern);
+    }
 
     /**
      * dateFormat(fromFmt, toFmt)：字符串日期在两种 pattern 间重排（TemporalAccessor 透传）。
@@ -51,8 +60,8 @@ class DateTimeFunctions {
         }
         String text = String.valueOf(value);
         try {
-            return DateTimeFormatter.ofPattern(args.get(1)).format(
-                    DateTimeFormatter.ofPattern(args.get(0)).parse(text));
+            return formatter(args.get(1)).format(
+                    formatter(args.get(0)).parse(text));
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(
                     "value '" + text + "' cannot be parsed with pattern '" + args.get(0) + "'", e);
@@ -94,14 +103,41 @@ class DateTimeFunctions {
                 parseWithPattern(value, args.get(0), "full date fields", LocalDate::from));
     }
 
-    /** toIsoDateTime(fmt)：按 fmt 解析（须含日期时间字段），输出固定 yyyy-MM-dd'T'HH:mm:ss（亚秒截断） */
+    /**
+     * toIsoDateTime(fmt)：按 fmt 解析（须含日期时间字段），输出固定 yyyy-MM-dd'T'HH:mm:ss（亚秒截断）。
+     * 源值按本地字段读取，不换算时区。
+     */
     static String toIsoDateTime(Object value, List<String> args) {
-        requireArgs(args, 1, "toIsoDateTime(fmt)");
+        requireArgs(args, 1, "toIsoDateTime(fmt) / toIsoDateTime(fmt, zone)");
         if (value == null) {
             return null;
         }
         return FIXED_SECONDS.format(
                 parseWithPattern(value, args.get(0), "date-time fields", LocalDateTime::from));
+    }
+
+    /**
+     * toIsoDateTime(fmt, zone)：按 fmt 解析出<b>带 offset 的时间点</b>，换算到目标时区后输出该时区墙上时间的
+     * 无 offset 形态 yyyy-MM-dd'T'HH:mm:ss（外部评审二轮 评审二-13：{@link #dateFormat} 这类只重排字段的
+     * 函数会把 offset 直接丢弃，本地时间顺序可能与真实时刻相反——带 offset 的数据须经本函数归一后再做日期断言）。
+     * 源值不带 offset / 时区字段时无从换算，明确报错。
+     */
+    static String toIsoDateTimeInZone(Object value, List<String> args) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value);
+        ZonedDateTime instant;
+        try {
+            instant = ZonedDateTime.from(formatter(args.get(0)).parse(text));
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "value '" + text + "' cannot be parsed with pattern '" + args.get(0) + "'", e);
+        } catch (DateTimeException missingOffset) {
+            throw new IllegalArgumentException("value '" + text + "' has no offset or zone information; "
+                    + "toIsoDateTime(fmt, zone) requires an offset in the source value to convert time zones", missingOffset);
+        }
+        return FIXED_SECONDS.format(instant.withZoneSameInstant(zone(args.get(1))));
     }
 
     /**
@@ -126,7 +162,7 @@ class DateTimeFunctions {
                                                                    Function<TemporalAccessor, T> extractor) {
         String text = String.valueOf(value);
         try {
-            return extractor.apply(DateTimeFormatter.ofPattern(pattern).parse(text));
+            return extractor.apply(formatter(pattern).parse(text));
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(
                     "value '" + text + "' cannot be parsed with pattern '" + pattern + "'", e);

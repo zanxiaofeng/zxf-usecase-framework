@@ -68,6 +68,31 @@ class DataTransferStepFactoryTest {
     }
 
     @Test
+    void duplicateKeySpecFailsFast() {
+        // 外部评审二轮 P1-3：重复 YAML 键此前被静默后值覆盖（前一份规则丢失而校验通过）——生产入口装配期即拒绝
+        assertThatThrownBy(() -> factory.create(new StepDefinition("dup", "dataTransfer", null,
+                Map.of("spec", "transfers/duplicate-keys.yaml"))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("dup")
+                .hasMessageContaining("rules");
+    }
+
+    @Test
+    void conflictingTargetsAndBadExpressions_failFast() {
+        // 外部评审二轮 评审二-10 / 新发现 2：结构冲突与表达式语法错误在装配期暴露，而非首个请求才炸
+        assertThatThrownBy(() -> factory.create(new StepDefinition("conflict", "dataTransfer", null,
+                Map.of("spec", "transfers/conflicting-targets.yaml"))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("conflict")
+                .hasMessageContaining("out.id.part");
+        assertThatThrownBy(() -> factory.create(new StepDefinition("badexpr", "dataTransfer", null,
+                Map.of("spec", "transfers/bad-expression.yaml"))))
+                .isInstanceOf(UseCaseAssemblyException.class)
+                .hasMessageContaining("badexpr")
+                .hasMessageContaining("computed #0");
+    }
+
+    @Test
     void blankConfigRejectedByBeanValidation() {
         assertThatThrownBy(() -> factory.create(new StepDefinition("nospec", "dataTransfer", null,
                 Map.of())))

@@ -289,6 +289,79 @@ class ValidationTest {
                 .hasMessageContaining("ISO-8601 date or date-time argument");
     }
 
+    @Test
+    void numericAssertion_nonNumericValue_recordedAsFailureAndCollectionContinues() {
+        // 外部评审二轮 P1-6：历史行为——collect 模式下裸抛 NumberFormatException，后续字段的失败全部丢失
+        TransferOptions collect = new TransferOptions();
+        collect.setValidationMode(ValidationMode.COLLECT);
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("non-numeric").options(collect)
+                .rules(List.of(
+                        MappingRule.builder().from("price").to("out.price").build(),
+                        MappingRule.builder().from("qty").to("out.qty").build()))
+                .validations(List.of(
+                        validation("out.price", "gt(0)", "单价必须大于0"),
+                        validation("out.qty", "gt(0)", "数量必须大于0")))
+                .build();
+        TransferEngine engine = new TransferEngine(spec);
+
+        for (String nonNumeric : List.of("\"abc\"", "\"\"", "true", "\"12abc\"", "[]")) {
+            assertThatThrownBy(() -> engine.transfer("{\"price\": " + nonNumeric + ", \"qty\": -1}"))
+                    .as("price = %s", nonNumeric)
+                    .isInstanceOf(ValidationException.class)
+                    .satisfies(e -> assertThat(((ValidationException) e).getFailures())
+                            .extracting(failure -> failure.path()).containsExactly("out.price", "out.qty"))
+                    .hasMessageContaining("not numeric");
+        }
+    }
+
+    @Test
+    void wildcardNotNull_coversElementsMissingTheField() {
+        // 外部评审二轮 评审二-9：历史行为——只校验已存在的键，第二个元素缺 unitPrice 时断言通过
+        TransferSpec spec = spec(ValidationRule.builder()
+                .path("out.lines[*].unitPrice")
+                .rules(List.of(Assertion.builder().assertExpr("notNull").message("单价必填").build()))
+                .message("required")
+                .build());
+
+        assertThatThrownBy(() -> new TransferEngine(spec).transfer("{\"items\": [{\"price\": 10}, {\"qty\": 1}]}"))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(e -> assertThat(((ValidationException) e).getFailures())
+                        .extracting(failure -> failure.path()).containsExactly("out.lines[1].unitPrice"))
+                .hasMessageContaining("单价必填");
+        assertThatCode(() -> new TransferEngine(spec).transfer("{\"items\": [{\"price\": 10, \"qty\": 1}, {\"price\": 5}]}"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void wildcardAssertions_visitEveryElementOfMultiLevelWildcards() {
+        TransferSpec spec = TransferSpec.builder()
+                .version("1.0").name("multi-level")
+                .rules(List.of(
+                        MappingRule.builder().from("data[*].rows[*].amount").to("out.a[*].b[*].c").build(),
+                        MappingRule.builder().from("data[*].rows[*].qty").to("out.a[*].b[*].q").build()))
+                .validations(List.of(ValidationRule.builder()
+                        .path("out.a[*].b[*].c")
+                        .rules(List.of(Assertion.builder().assertExpr("gt(0)").message("金额必须为正").build()))
+                        .message("required").build()))
+                .build();
+        TransferOptions collect = new TransferOptions();
+        collect.setValidationMode(ValidationMode.COLLECT);
+        spec.setOptions(collect);
+        TransferEngine engine = new TransferEngine(spec);
+
+        // 元素存在但缺 amount（只有 qty）与 amount = 0 都要被枚举到
+        assertThatThrownBy(() -> engine.transfer(
+                "{\"data\": [{\"rows\": [{\"amount\": 1, \"qty\": 1}, {\"qty\": 2}]}, {\"rows\": [{\"amount\": 0, \"qty\": 3}]}]}"))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(e -> assertThat(((ValidationException) e).getFailures())
+                        .extracting(failure -> failure.path())
+                        .containsExactly("out.a[0].b[1].c", "out.a[1].b[0].c"));
+        // 空数组 / 数组缺失：无元素可校验，不产生失败（锚定现状）
+        assertThatCode(() -> engine.transfer("{\"data\": []}")).doesNotThrowAnyException();
+        assertThatCode(() -> engine.transfer("{\"data\": [{\"rows\": []}]}")).doesNotThrowAnyException();
+    }
+
     /** orderDate/createdAt 双字段映射的日期断言公共 spec */
     private static TransferSpec dateSpec(ValidationRule... validations) {
         return TransferSpec.builder()

@@ -12,6 +12,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.example.datatransfer.core.spec.MappingRule;
+import com.example.datatransfer.core.spec.NullPolicy;
+import com.example.datatransfer.core.spec.TransferOptions;
 import com.example.datatransfer.core.spec.TransferSpec;
 
 class TransferAssertTest {
@@ -137,6 +139,130 @@ class TransferAssertTest {
                 .isInstanceOf(AssertionError.class)
                 .hasMessageContaining("crmOrder.lines[*].unitPrice")
                 .hasMessageContaining("-5");
+    }
+
+    @Test
+    void strictMatch_keepsJsonTypes_stringAndNumberAreDifferent() {
+        // 外部评审二轮 P1-7：历史行为——期望 "100" 与实际 100 判相等
+        String expectedWithStringNumber = """
+                {"crmOrder": {"id": "ORD-1", "lines": [{"unitPrice": "100"}, {"unitPrice": 50}]}}
+                """;
+
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .matchesExpectedJson(expectedWithStringNumber))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("crmOrder.lines[0].unitPrice");
+    }
+
+    @Test
+    void withNumericStringCoercion_isAnExplicitOptIn() {
+        // YAML / 手写期望常把数字写成字符串——宽松口径保留为显式开关（仅放宽期望侧）
+        String expectedWithStringNumber = """
+                {"crmOrder": {"id": "ORD-1", "lines": [{"unitPrice": "100"}, {"unitPrice": 50}]}}
+                """;
+
+        TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .withNumericStringCoercion()
+                .matchesExpectedJson(expectedWithStringNumber);
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .withNumericStringCoercion()
+                .matchesExpectedJson("{\"crmOrder\": {\"id\": \"ORD-1\", \"lines\": [{\"unitPrice\": \"100 dollars\"}, "
+                        + "{\"unitPrice\": 50}]}}"))   // 非数值字符串仍然不等价
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("crmOrder.lines[0].unitPrice");
+    }
+
+    @Test
+    void pathValueEquals_missingPathFails_evenWhenExpectingNull() {
+        // 外部评审二轮 P1-8：历史行为——resolveSingleValue 对不存在的路径返回 null，
+        // pathValueEquals("out.missing", null) 假通过（同一个 null 同时表示「缺失」与「存在但为空」）
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute()
+                .pathValueEquals("crmOrder.missing", null))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("crmOrder.missing");
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute()
+                .pathValueEquals("crmOrder.id", null))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("crmOrder.id");
+        // 路径存在且值为 JSON null：通过
+        TransferSpec nullable = TransferSpec.builder()
+                .version("1.0").name("nullable")
+                .options(nullableKeep())
+                .rules(List.of(MappingRule.builder().from("a").to("out.a").build()))
+                .build();
+        TransferAssert.assertThat(nullable)
+                .withFixtureJson("{\"a\": null}")
+                .execute()
+                .pathValueEquals("out.a", null);
+    }
+
+    @Test
+    void pathValueEquals_noLongerCoercesStringsToNumbers() {
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute()
+                .pathValueEquals("crmOrder.lines[0].unitPrice", "100"))
+                .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute()
+                .pathValueIn("crmOrder.lines[0].unitPrice", "100", "101"))
+                .isInstanceOf(AssertionError.class);
+        TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute()
+                .pathValueIn("crmOrder.lines[0].unitPrice", 100, 101)
+                .pathValueEquals("crmOrder.lines[0].unitPrice", 100.0);   // Number ↔ Number 仍按数值比较
+    }
+
+    @Test
+    void singleValueAssertions_reportMissingPathExplicitly() {
+        AssertContext context = TransferAssert.assertThat("specs/assert-demo.yaml")
+                .withFixtureJson(FIXTURE)
+                .execute();
+
+        assertThatThrownBy(() -> context.pathValueMatches("crmOrder.missing", ".*"))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("crmOrder.missing");
+        assertThatThrownBy(() -> context.pathValueGreaterThan("crmOrder.missing", 0))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("crmOrder.missing");
+        assertThatThrownBy(() -> context.pathValueLessThan("crmOrder.missing", 0))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("crmOrder.missing");
+        assertThatThrownBy(() -> context.pathValueContains("crmOrder.missing", "x"))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("crmOrder.missing");
+    }
+
+    @Test
+    void matchesExpected_detectsPrecisionLossInEngineOutput() {
+        // 外部评审二轮：历史行为——期望与实际在比较前同样被舍入，恒等映射丢精度时断言仍然通过
+        String fixture = "{\"big\": 12345678901234567890.123, \"n\": 123456789.123456789}";
+        TransferSpec identity = TransferSpec.builder()
+                .version("1.0").name("identity")
+                .rules(List.of(MappingRule.builder().from("big").to("out.big").build(),
+                        MappingRule.builder().from("n").to("out.n").build()))
+                .build();
+
+        TransferAssert.assertThat(identity)
+                .withFixtureJson(fixture)
+                .matchesExpectedJson("{\"out\": {\"big\": 12345678901234567890.123, \"n\": 123456789.123456789}}");
+        assertThatThrownBy(() -> TransferAssert.assertThat(identity)
+                .withFixtureJson(fixture)
+                .matchesExpectedJson("{\"out\": {\"big\": 12345678901234567000, \"n\": 1.2345678912345679E8}}"))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("out.big")
+                .hasMessageContaining("out.n");
+    }
+
+    private static TransferOptions nullableKeep() {
+        TransferOptions options = new TransferOptions();
+        options.setNullPolicy(NullPolicy.KEEP);
+        return options;
     }
 
     @Test

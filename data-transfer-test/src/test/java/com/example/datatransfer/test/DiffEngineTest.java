@@ -44,17 +44,29 @@ class DiffEngineTest {
     }
 
     @Test
-    void numericLooseComparison() {
+    void numericComparison_isExactAcrossNumberTypesOnly() {
         assertThat(DiffEngine.diff(Map.of("p", 113), Map.of("p", 113.00),
                 TransferAssert.CompareMode.STRICT).isEmpty()).isTrue();
         assertThat(DiffEngine.diff(Map.of("p", 113), Map.of("p", 112.87),
                 TransferAssert.CompareMode.STRICT).isEmpty()).isFalse();
-        // 期望侧 String 宽松化（YAML 期望文件常把数字读成字符串）
+        // 外部评审二轮 P1-7：JSON 类型是契约的一部分——String 与 Number 默认不等
+        // （历史行为：期望侧 String 向 Number 单向宽松，"000123" 与 123 判相等）
         assertThat(DiffEngine.diff(Map.of("p", "113.0"), Map.of("p", 113.0),
-                TransferAssert.CompareMode.STRICT).isEmpty()).isTrue();
-        // 反向不宽松：实际侧字符串不与期望数字等价
+                TransferAssert.CompareMode.STRICT).isEmpty()).isFalse();
         assertThat(DiffEngine.diff(Map.of("p", 113.0), Map.of("p", "113.0"),
                 TransferAssert.CompareMode.STRICT).isEmpty()).isFalse();
+        assertThat(DiffEngine.looseEquals("000123", 123)).isFalse();
+        assertThat(DiffEngine.looseEquals("000123", 123, true)).isTrue();
+        assertThat(DiffEngine.looseEquals(123, "000123", true)).isFalse();   // 仅放宽期望侧
+    }
+
+    @Test
+    void highPrecisionDecimals_compareExactly() {
+        java.math.BigDecimal exact = new java.math.BigDecimal("12345678901234567890.123");
+        java.math.BigDecimal lossy = new java.math.BigDecimal("12345678901234567000");
+
+        assertThat(DiffEngine.looseEquals(exact, exact)).isTrue();
+        assertThat(DiffEngine.looseEquals(exact, lossy)).isFalse();
     }
 
     @Test

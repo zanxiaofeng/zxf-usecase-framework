@@ -5,14 +5,19 @@
 ## 模块结构（Maven 多模块）
 
 ```
-usecase-framework（聚合 POM）
+usecase-framework（聚合 POM，六模块）
 ├── usecase-framework-core     # 框架本体（独立库 jar）：core/assemble/steps/auth/codec/expression/web
 │                              # + AutoConfiguration.imports —— 经 spring-boot 自动配置装配，可单独发布
 ├── usecase-framework-test     # YAML 用例测试 harness（独立库 jar，业务方 test scope 引用）：
 │                              # UseCaseScenario 场景断言 + RecordingEventPublisher 事件探针
-└── usecase-framework-demo     # 演示应用（可执行 jar）：MyAppApplication + application/domain/infrastructure
-                               # + application.yml 用例定义 + e2e 测试
+├── usecase-framework-demo     # 演示应用（可执行 jar）：MyAppApplication + application/domain/infrastructure
+│                              # + application.yml 用例定义 + e2e 测试
+├── data-transfer-core         # 声明式 Data Transfer 引擎（Flatten → 规则映射 → Unflatten；无 Spring 亦可独立使用）
+├── data-transfer-test         # TransferAssert 契约测试工具（spec + fixture → 与期望输出做 FlatMap 级 diff）
+└── data-transfer-demo         # Data Transfer 端到端示例（specs / samples / expected 三件套）
 ```
+
+> data-transfer 三模块的设计与行为契约见 `docs/基于JSON Flatten的声明式Data Transfer框架.md`（数值契约、表达式安全模型与行为变更清单在附录 D.6）。
 
 ## 快速开始
 
@@ -335,7 +340,8 @@ UseCaseScenario.given(registry, objectMapper)          // @SpringBootTest 中注
 ## 测试
 
 ```bash
-mvn test     # 根目录执行：usecase-framework-core + usecase-framework-test + usecase-framework-demo 三模块全量运行（156 个）
+mvn test     # 根目录执行：六模块全量运行（usecase-framework-core 227 + usecase-framework-test 14 + usecase-framework-demo 29
+             #   + data-transfer-core 184 + data-transfer-test 33 + data-transfer-demo 9，共 496 个）
              # main 源集编译期经 Error Prone + NullAway 空值检查（WARN 级；.mvn/jvm.config 提供 javac 导出）
 ```
 

@@ -1,0 +1,9 @@
+version: "1.0"
+name: "SandboxEscape"
+rules:
+  - from: "id"
+    to: "out.id"
+computed:
+  # 语法合法但越界：反射链取 Class 对象——装配期通过，求值期由表达式沙箱拦截
+  - to: "out.leak"
+    expr: "id.getClass().forName('java.lang.Runtime')"

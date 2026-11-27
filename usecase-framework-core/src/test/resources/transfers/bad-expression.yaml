@@ -1,0 +1,8 @@
+version: "1.0"
+name: "BadExpression"
+rules:
+  - from: "id"
+    to: "out.id"
+computed:
+  - to: "out.total"
+    expr: "sum("

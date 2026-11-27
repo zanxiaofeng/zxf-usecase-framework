@@ -429,4 +429,22 @@ class TransferEngineTest {
                         DefaultValue.builder().to("crmOrder.source").value("eCommerce").build()))
                 .build();
     }
+
+    @Test
+    void arrayLeafValues_fromTransformFunctions_becomeJsonArrays() {
+        // 独立审查发现：变换函数返回 byte[] 时 unflatten 的 mapper 往返得到原数组，无限递归到 StackOverflowError
+        TransferSpec spec = TransferSpec.builder().version("1.0").name("array-leaf")
+                .rules(List.of(
+                        MappingRule.builder().from("a").to("p.bytes").transform("bytes").build(),
+                        MappingRule.builder().from("a").to("p.ints").transform("ints").build(),
+                        MappingRule.builder().from("a").to("p.mixed").transform("mixed").build()))
+                .build();
+        TransferEngine engine = new TransferEngine(spec, Map.of(
+                "bytes", (v, args, ctx) -> new byte[] {1, 2, 3},
+                "ints", (v, args, ctx) -> new int[] {4, 5},
+                "mixed", (v, args, ctx) -> new Object[] {1, "x", null}));
+
+        assertThat(engine.transfer("{\"a\": 1}").toString())
+                .isEqualTo("{\"p\":{\"bytes\":[1,2,3],\"ints\":[4,5],\"mixed\":[1,\"x\",null]}}");
+    }
 }

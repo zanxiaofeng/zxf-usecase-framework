@@ -40,10 +40,12 @@ public class TransferAssert {
     private final List<String> ignorePaths = new ArrayList<>();
     private final Map<String, TransformFunction> customFunctions = new HashMap<>();
     private CompareMode compareMode = CompareMode.STRICT;
+    private boolean numericStringCoercion;
     private Clock clock = Clock.systemUTC();
 
     private final FlatMapProcessor flatProcessor = new FlatMapProcessor();
-    private final JsonMapper mapper = JsonMapper.builder().build();
+    /** 与引擎同一 BigDecimal mapper：实际输出里的长小数 / 大数在比较前不被舍入（否则精度丢失无法被检出） */
+    private final JsonMapper mapper = flatProcessor.mapper();
 
     public enum CompareMode {
         /** 严格模式：输出必须与期望完全一致，不允许多余字段 */
@@ -98,6 +100,15 @@ public class TransferAssert {
      * 与 {@link #registerFunction(String, TransformFunction)} 的区别：此处测试的是真实内置
      * now，后者是同名遮蔽。
      */
+    /**
+     * 把期望侧的数字字符串当作数值比较（{@code "100"} 与 {@code 100} 相等，仅放宽期望侧）。
+     * 默认关闭——JSON 类型是契约的一部分；YAML / 手写期望常把数字写成字符串时显式开启。
+     */
+    public TransferAssert withNumericStringCoercion() {
+        this.numericStringCoercion = true;
+        return this;
+    }
+
     public TransferAssert withClock(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
         return this;
@@ -131,7 +142,7 @@ public class TransferAssert {
     public AssertContext execute() {
         Objects.requireNonNull(fixtureJson, "Fixture must be set before execute()");
         JsonNode result = buildEngine().transfer(fixtureJson);
-        return new AssertContext(result, ignorePaths);
+        return new AssertContext(result, ignorePaths, numericStringCoercion);
     }
 
     // ===== 内部方法 =====
@@ -148,7 +159,7 @@ public class TransferAssert {
         removeIgnoredPaths(expectedFlat, ignorePaths);
         removeIgnoredPaths(actualFlat, ignorePaths);
 
-        DiffResult diff = DiffEngine.diff(expectedFlat, actualFlat, compareMode);
+        DiffResult diff = DiffEngine.diff(expectedFlat, actualFlat, compareMode, numericStringCoercion);
         if (!diff.isEmpty()) {
             throw new AssertionError(buildFailureMessage(diff, actualJson));
         }
